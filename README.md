@@ -76,10 +76,29 @@ streamlit run sift/dashboard.py
 ```
 
 The dashboard lets you:
-- Filter by recommendation (apply / consider / skip), domain fit, role fit, gap risk, rating, employer, and job title
+- Switch between **Inbox** (unrated), **Saved** (liked/superliked), **Hidden** (disliked), and **All** views
+- Refine by recommendation, domain fit, role fit, gap risk, employer, and job title via the filter popover
 - View the full job listing alongside the structured AI assessment — fit areas, gaps with severity, and per-dimension explanations
-- Rate entries with 🌟 (superlike), 👍 (like), or 👎 (dislike) using buttons or keyboard shortcuts (`s` / `b` / `x`); use `←` / `→` (or `k` / `l`) to move between listings
+- Rate entries with 🌟 superlike / 👍 like / 👎 dislike; rated entries auto-advance to the next listing
+- Toggle **focus mode** to hide the table and controls for distraction-free swiping
 - Permanently delete entries
+
+**Keyboard shortcuts**
+
+| Key | Action |
+|-----|--------|
+| `k` / `→` | Next listing |
+| `j` / `←` | Previous listing |
+| `3` | Superlike |
+| `2` | Like |
+| `1` | Dislike |
+| `g i` | Go to Inbox |
+| `g s` | Go to Saved |
+| `g h` | Go to Hidden |
+| `g a` | Go to All |
+| `f` | Toggle focus mode |
+| `/` | Focus search bar |
+| `Esc` | Blur search bar |
 
 ## LLM providers
 

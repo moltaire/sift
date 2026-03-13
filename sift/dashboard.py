@@ -1,5 +1,3 @@
-from pathlib import Path
-
 import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
@@ -14,6 +12,9 @@ from sift.store import (
 
 st.set_page_config(page_title="💘 Sifter", layout="wide")
 st.title("💘 Sifter")
+
+# Read focus mode from session state — the toggle widget sets this key on interaction
+_focus_mode = st.session_state.get("focus_mode", False)
 
 init_db()
 
@@ -49,16 +50,33 @@ SOURCE_DISPLAY.setdefault("manual-test", "Manual")
 SUGGESTION_ICON = {"apply": "🟢", "consider": "🟡", "skip": "🔴"}
 FIT_ICON = {"high": "🟢", "medium": "🟡", "low": "🔴"}
 GAP_ICON = {"high": "🔴", "medium": "🟡", "low": "🟢"}
-RATING_ICON = {"new": "✨", "superliked": "🌟", "liked": "👍", "disliked": "👎"}
+RATING_ICON = {"new": "📬", "superliked": "🌟", "liked": "👍", "disliked": "👎"}
 
 SUGGESTION_LABELS = {
     f"{SUGGESTION_ICON[v]} {v.title()}": v for v in ["apply", "consider", "skip"]
 }
 FIT_LABELS = {f"{FIT_ICON[v]} {v}": v for v in ["high", "medium", "low"]}
-GAP_LABELS = {f"{GAP_ICON[v]} {v}": v for v in ["high", "medium", "low"]}
-RATING_LABELS = {
-    f"{RATING_ICON[v]} {v.title()}": v
-    for v in ["new", "superliked", "liked", "disliked"]
+GAP_LABELS = {
+    f"{GAP_ICON[v]} {v}": v for v in ["low", "medium", "high"]
+}  # low risk first
+
+# Named views: label → rating values to include
+VIEWS = {
+    "📬 Inbox": ["new"],
+    "⭐ Saved": ["superliked", "liked"],
+    "👎 Hidden": ["disliked"],
+    "✨ All": ["new", "superliked", "liked", "disliked"],
+}
+_DEFAULT_VIEW = "📬 Inbox"
+
+# Refinement defaults = all options selected (no filtering)
+_REFINE_DEFAULTS: dict = {
+    "refine_suggestion": list(SUGGESTION_LABELS),
+    "refine_domain_fit": list(FIT_LABELS),
+    "refine_role_fit": list(FIT_LABELS),
+    "refine_gap_risk": list(GAP_LABELS),
+    "filter_employers": [],
+    "filter_titles": [],
 }
 
 raw_df = pd.DataFrame([a.model_dump() for a in assessments])
@@ -74,130 +92,147 @@ df["gap_risk"] = raw_df["gap_risk"].map(_DOT_INV)
 df["source"] = df["source"].map(lambda v: SOURCE_DISPLAY.get(v, v.title()))
 df["rating"] = raw_df["rating"].map(lambda v: RATING_ICON.get(v, "🆕"))
 
-# Apply a pending filter reset before any widgets are rendered
-if st.session_state.pop("_reset_filters", False):
-    st.session_state["rating_pills"] = list(RATING_LABELS)
-    st.session_state["filter_suggestion"] = list(SUGGESTION_LABELS)
-    st.session_state["filter_domain_fit"] = list(FIT_LABELS)
-    st.session_state["filter_role_fit"] = list(FIT_LABELS)
-    st.session_state["filter_gap_risk"] = list(GAP_LABELS)
-    st.session_state["filter_search"] = ""
-    st.session_state["filter_employers"] = []
-    st.session_state["filter_titles"] = []
-    st.query_params.clear()
+# Detect view change or explicit reset → clear refinement filters before widgets render
+# Use a separate non-widget key so the view survives focus mode (widgets clear state when hidden)
+_current_view = st.session_state.get("_view_persisted", _DEFAULT_VIEW)
+_prev_view = st.session_state.get("_prev_view")
+if st.session_state.pop("_reset_refinements", False) or (
+    _prev_view is not None and _current_view != _prev_view
+):
+    for k, v in _REFINE_DEFAULTS.items():
+        st.session_state[k] = v
+    st.session_state.pop("selected_url", None)
+if _prev_view is None or _current_view != _prev_view:
+    st.session_state["_prev_view"] = _current_view
 
-# --- Sidebar filters ---
-st.sidebar.header("Filters")
-
-# Predefined pills for ratings, suggestions, fits, and gap risk
-_all_rating_keys = list(RATING_LABELS)
-_default_rating_keys = [
-    k for k, v in RATING_LABELS.items() if v in ("new", "superliked", "liked")
-]
-_saved_rating_values = st.query_params.get_all("rating")  # ["new", "liked", ...]
-_initial_rating_keys = [
-    k for k, v in RATING_LABELS.items() if v in _saved_rating_values
-] or _default_rating_keys
-
-rating_labels = (
-    st.sidebar.pills(
-        "Rating",
-        options=_all_rating_keys,
-        default=_initial_rating_keys,
-        key="rating_pills",
-        selection_mode="multi",
+if not _focus_mode:
+    # --- View switcher + refine popover + search (single row) ---
+    _refine_active = (
+        set(st.session_state.get("refine_suggestion", list(SUGGESTION_LABELS)))
+        != set(SUGGESTION_LABELS)
+        or set(st.session_state.get("refine_domain_fit", list(FIT_LABELS)))
+        != set(FIT_LABELS)
+        or set(st.session_state.get("refine_role_fit", list(FIT_LABELS)))
+        != set(FIT_LABELS)
+        or set(st.session_state.get("refine_gap_risk", list(GAP_LABELS)))
+        != set(GAP_LABELS)
+        or bool(st.session_state.get("filter_employers"))
+        or bool(st.session_state.get("filter_titles"))
     )
-    or _all_rating_keys
-)
 
-if set(rating_labels) != set(_initial_rating_keys):
-    st.query_params["rating"] = [RATING_LABELS[k] for k in rating_labels]
-    st.rerun()
-suggestion_labels = st.sidebar.pills(
-    "Suggestion",
-    options=list(SUGGESTION_LABELS),
-    default=list(SUGGESTION_LABELS),
-    key="filter_suggestion",
-    selection_mode="multi",
-)
-domain_fit_labels = st.sidebar.pills(
-    "Domain Fit",
-    options=list(FIT_LABELS),
-    default=list(FIT_LABELS),
-    key="filter_domain_fit",
-    selection_mode="multi",
-)
-role_fit_labels = st.sidebar.pills(
-    "Role Fit",
-    options=list(FIT_LABELS),
-    default=list(FIT_LABELS),
-    key="filter_role_fit",
-    selection_mode="multi",
-)
-gap_risk_labels = st.sidebar.pills(
-    "Gap Risk",
-    options=list(GAP_LABELS),
-    default=list(GAP_LABELS),
-    key="filter_gap_risk",
-    selection_mode="multi",
-)
-
-# Search box for employer, title, or reasoning text
-search = st.sidebar.text_input(
-    "Search", placeholder="Employer, job title, listing, ...", key="filter_search"
-)
-
-# Multi-select filters for employer and job title, populated from the dataset
-employers = sorted([e for e in raw_df["employer"].unique() if e])
-selected_employers = (
-    (
-        st.sidebar.multiselect(
-            "Employer",
-            options=employers,
-            default=None,
-            placeholder="Filter by employer",
-            key="filter_employers",
+    _vcol, _right = st.columns([2, 1], gap="large")
+    with _right:
+        _rcol, _scol = st.columns([1, 4], gap="small")
+    with _vcol:
+        view = (
+            st.segmented_control(
+                "View",
+                options=list(VIEWS),
+                default=_current_view,
+                key="view",
+                selection_mode="single",
+                label_visibility="collapsed",
+            )
+            or _DEFAULT_VIEW
         )
-        or []
-    )
-    if employers
-    else []
-)
+        st.session_state["_view_persisted"] = view
+        _current_view = view
+    with _rcol:
+        with st.popover(
+            ":material/filter_alt:" if _refine_active else ":material/filter_alt_off:",
+            width="stretch",
+        ):
+            _fc1, _fc2, _fc3, _fc4 = st.columns(4)
+            with _fc1:
+                st.pills(
+                    "Suggestion",
+                    options=list(SUGGESTION_LABELS),
+                    default=list(SUGGESTION_LABELS),
+                    key="refine_suggestion",
+                    selection_mode="multi",
+                )
+            with _fc2:
+                st.pills(
+                    "Domain Fit",
+                    options=list(FIT_LABELS),
+                    default=list(FIT_LABELS),
+                    key="refine_domain_fit",
+                    selection_mode="multi",
+                )
+            with _fc3:
+                st.pills(
+                    "Role Fit",
+                    options=list(FIT_LABELS),
+                    default=list(FIT_LABELS),
+                    key="refine_role_fit",
+                    selection_mode="multi",
+                )
+            with _fc4:
+                st.pills(
+                    "Gap Risk",
+                    options=list(GAP_LABELS),
+                    default=list(GAP_LABELS),
+                    key="refine_gap_risk",
+                    selection_mode="multi",
+                )
 
-job_titles = sorted([t for t in raw_df["job_title"].unique() if t])
-selected_titles = (
-    (
-        st.sidebar.multiselect(
-            "Job Title",
-            options=job_titles,
-            default=None,
-            placeholder="Filter by job title",
-            key="filter_titles",
+            employers = sorted([e for e in raw_df["employer"].unique() if e])
+            job_titles = sorted([t for t in raw_df["job_title"].unique() if t])
+            _ec1, _ec2 = st.columns(2)
+            with _ec1:
+                if employers:
+                    st.multiselect(
+                        "Employer",
+                        options=employers,
+                        default=None,
+                        placeholder="Filter by employer",
+                        key="filter_employers",
+                    )
+            with _ec2:
+                if job_titles:
+                    st.multiselect(
+                        "Job Title",
+                        options=job_titles,
+                        default=None,
+                        placeholder="Filter by job title",
+                        key="filter_titles",
+                    )
+
+            if st.button("Reset refinements", use_container_width=True):
+                st.session_state["_reset_refinements"] = True
+                st.rerun()
+    with _scol:
+        search = st.text_input(
+            "Search",
+            placeholder="Employer, job title, keyword...",
+            key="filter_search",
+            label_visibility="collapsed",
         )
-        or []
-    )
-    if job_titles
-    else []
-)
-
-st.sidebar.divider()
-if st.sidebar.button("Reset filters", use_container_width=True):
-    st.session_state["_reset_filters"] = True
-    st.rerun()
+else:
+    search = st.session_state.get("filter_search", "")
 
 # --- Apply filters ---
-suggestions = [SUGGESTION_LABELS[l] for l in suggestion_labels]
-domain_fits = [FIT_LABELS[l] for l in domain_fit_labels]
-role_fits = [FIT_LABELS[l] for l in role_fit_labels]
-gap_risks = [GAP_LABELS[l] for l in gap_risk_labels]
-ratings = [RATING_LABELS[l] for l in rating_labels]
+# Read from session state — popover widgets only run when open, toggle hides them entirely
+view = _current_view
+_suggestion_keys = st.session_state.get("refine_suggestion") or list(SUGGESTION_LABELS)
+_domain_keys = st.session_state.get("refine_domain_fit") or list(FIT_LABELS)
+_role_keys = st.session_state.get("refine_role_fit") or list(FIT_LABELS)
+_gap_keys = st.session_state.get("refine_gap_risk") or list(GAP_LABELS)
+
+view_ratings = VIEWS.get(view, VIEWS[_DEFAULT_VIEW])
+suggestions = [SUGGESTION_LABELS[l] for l in _suggestion_keys]
+domain_fits = [FIT_LABELS[l] for l in _domain_keys]
+role_fits = [FIT_LABELS[l] for l in _role_keys]
+gap_risks = [GAP_LABELS[l] for l in _gap_keys]
+selected_employers = st.session_state.get("filter_employers") or []
+selected_titles = st.session_state.get("filter_titles") or []
 
 mask = (
-    raw_df["suggestion"].isin(suggestions)
+    raw_df["rating"].isin(view_ratings)
+    & raw_df["suggestion"].isin(suggestions)
     & raw_df["domain_fit"].isin(domain_fits)
     & raw_df["role_fit"].isin(role_fits)
     & raw_df["gap_risk"].isin(gap_risks)
-    & raw_df["rating"].isin(ratings)
 )
 if selected_employers:
     mask &= raw_df["employer"].isin(selected_employers)
@@ -215,9 +250,7 @@ if search:
 filtered = df[mask].reset_index(drop=True)
 filtered_raw = raw_df[mask].reset_index(drop=True)
 
-st.caption(f"{len(filtered)} of {len(df)} listings shown")
-
-# --- Table ---
+# --- Table (hidden in focus mode) ---
 TABLE_COLS = [
     "rating",
     "suggestion",
@@ -237,56 +270,75 @@ if not selected_url and not filtered_raw.empty:
     selected_url = filtered_raw.iloc[0]["url"]
     st.session_state["selected_url"] = selected_url
 
-_ROW_H = 35
-_HEADER_H = 38
-table_height = min(len(filtered) * _ROW_H + _HEADER_H, 280 if selected_url else 560)
+if not _focus_mode:
+    if filtered.empty:
+        _empty_msg = (
+            "No liked or superliked listings yet. Rate some listings and they will appear here."
+            if _current_view == "⭐ Saved"
+            else (
+                "No disliked listings yet. Rate some listings and they will appear here."
+                if _current_view == "👎 Hidden"
+                else "No listings yet. Run the pipeline to fetch and assess new job postings."
+            )
+        )
+        st.info(_empty_msg)
+        selected_url = None
+    else:
+        _ROW_H = 35
+        _HEADER_H = 38
+        table_height = min(
+            len(filtered) * _ROW_H + _HEADER_H, 280 if selected_url else 560
+        )
 
-selection = st.dataframe(
-    filtered[TABLE_COLS],
-    column_config={
-        "rating": st.column_config.TextColumn("Rating"),
-        "suggestion": st.column_config.TextColumn(
-            "Suggestion",
-            help="LLM recommendation: apply, consider, or skip. Advisory only.",
-        ),
-        "employer": st.column_config.TextColumn("Employer"),
-        "job_title": st.column_config.TextColumn("Job Title"),
-        "domain_fit": st.column_config.TextColumn(
-            "Domain",
-            help="Domain fit: 🟢 high · 🟡 medium · 🔴 low",
-        ),
-        "role_fit": st.column_config.TextColumn(
-            "Role",
-            help="Role fit: 🟢 high · 🟡 medium · 🔴 low",
-        ),
-        "gap_risk": st.column_config.TextColumn(
-            "Gap",
-            help="Gap risk (inverted): 🟢 low risk · 🟡 medium · 🔴 high risk",
-        ),
-        "scraped_at": st.column_config.TextColumn("Date"),
-        "url": st.column_config.LinkColumn(
-            "Link",
-            display_text="https?://(?:[a-zA-Z0-9-]+\\.)*([a-zA-Z0-9-]+\\.[a-zA-Z]{2,})",
-        ),
-    },
-    width="stretch",
-    hide_index=True,
-    height=table_height,
-    selection_mode="single-row",
-    on_select="rerun",
-)
+        selection = st.dataframe(
+            filtered[TABLE_COLS],
+            column_config={
+                "rating": st.column_config.TextColumn("", width=15),
+                "suggestion": st.column_config.TextColumn(
+                    "Suggestion",
+                    help="LLM recommendation: apply, consider, or skip. Advisory only.",
+                ),
+                "employer": st.column_config.TextColumn("Employer"),
+                "job_title": st.column_config.TextColumn("Job Title"),
+                "domain_fit": st.column_config.TextColumn(
+                    "D",
+                    help="Domain fit: 🟢 high · 🟡 medium · 🔴 low",
+                    width=15,
+                ),
+                "role_fit": st.column_config.TextColumn(
+                    "R",
+                    help="Role fit: 🟢 high · 🟡 medium · 🔴 low",
+                    width=15,
+                ),
+                "gap_risk": st.column_config.TextColumn(
+                    "G",
+                    help="Gap: 🟢 low · 🟡 medium · 🔴 high",
+                    width=15,
+                ),
+                "scraped_at": st.column_config.TextColumn("Date"),
+                "url": st.column_config.LinkColumn(
+                    "Link",
+                    display_text="https?://(?:[a-zA-Z0-9-]+\\.)*([a-zA-Z0-9-]+\\.[a-zA-Z]{2,})",
+                ),
+            },
+            width="stretch",
+            hide_index=True,
+            height=table_height,
+            selection_mode="single-row",
+            on_select="rerun",
+        )
 
-# When a table row is clicked, update selected_url.
-selected_rows = selection.selection.rows
-if selected_rows and not st.session_state.pop("_from_nav", False):
-    clicked_url = filtered_raw.iloc[selected_rows[0]]["url"]
-    if clicked_url != selected_url:
-        st.session_state["selected_url"] = clicked_url
-        selected_url = clicked_url
+        selected_rows = selection.selection.rows
+        if selected_rows and not st.session_state.pop("_from_nav", False):
+            clicked_url = filtered_raw.iloc[selected_rows[0]]["url"]
+            if clicked_url != selected_url:
+                st.session_state["selected_url"] = clicked_url
+                selected_url = clicked_url
 
-# Show queued toast (set before a st.rerun() call)
-if "_toast" in st.session_state:
-    st.toast(st.session_state.pop("_toast"))
+        st.caption(f"{len(filtered)} of {len(df)} listings")
+else:
+    st.session_state.pop("_from_nav", None)
+
 
 # --- Detail panel ---
 if selected_url:
@@ -295,7 +347,6 @@ if selected_url:
         st.session_state.pop("selected_url", None)
     else:
         row = matches.iloc[0]
-        st.divider()
 
         # Prev / Next + quick-rate navigation row
         _pos = filtered_raw.index[filtered_raw["url"] == selected_url]
@@ -311,7 +362,7 @@ if selected_url:
                     "‹",
                     disabled=_pos == 0,
                     use_container_width=True,
-                    help="Previous (Keyboard shortcut: Left Arrow or J)",
+                    help="Previous (Keyboard: Left Arrow or J)",
                 ):
                     st.session_state["selected_url"] = filtered_raw.iloc[_pos - 1][
                         "url"
@@ -328,30 +379,32 @@ if selected_url:
                     "›",
                     disabled=_pos >= _total - 1,
                     use_container_width=True,
-                    help="Next (Keyboard shortcut: Right Arrow or K)",
+                    help="Next (Keyboard: Right Arrow or K)",
                 ):
                     st.session_state["selected_url"] = filtered_raw.iloc[_pos + 1][
                         "url"
                     ]
                     st.session_state["_from_nav"] = True
                     st.rerun()
+
         with _rating:
-            _hc, _bc, _sc = st.columns([1, 1, 1])
+            _hc, _bc, _sc, _, _focus = st.columns([1, 1, 1, 1 / 3, 2 / 3], gap="small")
             _current_rating = row["rating"]
+            # Toggle must render before any button that calls st.rerun(),
+            # otherwise the RerunException stops the script before it registers.
+            with _focus:
+                _focus_mode = st.toggle("Focus", key="focus_mode")
             with _sc:
                 if st.button(
                     "🌟",
                     type="primary" if _current_rating == "superliked" else "secondary",
                     use_container_width=True,
-                    help="Superlike (Keyboard shortcut: 3)",
+                    help="Superlike (Keyboard: 3)",
                 ):
                     new_r = "new" if _current_rating == "superliked" else "superliked"
                     update_rating(selected_url, new_r)
                     _load_assessments.clear()
-                    st.session_state["_toast"] = (
-                        "🌟 Superliked" if new_r == "superliked" else "🌟 Removed"
-                    )
-                    if _next_url and new_r == "superliked":
+                    if _next_url and new_r != "new":
                         st.session_state["selected_url"] = _next_url
                         st.session_state["_from_nav"] = True
                     st.rerun()
@@ -360,15 +413,12 @@ if selected_url:
                     "👍",
                     type="primary" if _current_rating == "liked" else "secondary",
                     use_container_width=True,
-                    help="Like (Keyboard shortcut: 2)",
+                    help="Like (Keyboard: 2)",
                 ):
                     new_r = "new" if _current_rating == "liked" else "liked"
                     update_rating(selected_url, new_r)
                     _load_assessments.clear()
-                    st.session_state["_toast"] = (
-                        "👍 Liked" if new_r == "liked" else "👍 Removed"
-                    )
-                    if _next_url and new_r == "liked":
+                    if _next_url and new_r != "new":
                         st.session_state["selected_url"] = _next_url
                         st.session_state["_from_nav"] = True
                     st.rerun()
@@ -377,15 +427,12 @@ if selected_url:
                     "👎",
                     type="primary" if _current_rating == "disliked" else "secondary",
                     use_container_width=True,
-                    help="Dislike (Keyboard shortcut: 1)",
+                    help="Dislike (Keyboard: 1)",
                 ):
                     new_r = "new" if _current_rating == "disliked" else "disliked"
                     update_rating(selected_url, new_r)
                     _load_assessments.clear()
-                    st.session_state["_toast"] = (
-                        "👎 Hidden" if new_r == "disliked" else "👎 Removed"
-                    )
-                    if _next_url and new_r == "disliked":
+                    if _next_url and new_r != "new":
                         st.session_state["selected_url"] = _next_url
                         st.session_state["_from_nav"] = True
                     st.rerun()
@@ -481,18 +528,95 @@ if selected_url:
                     st.session_state.pop("selected_url", None)
                     st.rerun()
 
-# Keyboard navigation: arrow keys / j/k move through listings; 1/2/3 for ratings.
-# Injected into the parent frame; deduplication guard prevents stacking listeners on reruns.
+# Keyboard shortcuts:
+#   j / ← : previous listing      k / → : next listing
+#   1: dislike   2: like   3: superlike
+#   g i: Inbox   g s: Saved   g h: Hidden   g a: All
+# Handler is replaced on every rerun so shortcut changes take effect without a full reload.
 components.html(
     """
     <script>
     (function () {
         var win = window.parent;
-        if (win._sift_nav_bound) return;
-        win._sift_nav_bound = true;
-        win.document.addEventListener('keydown', function (e) {
+        if (win._sift_nav_handler) {
+            win.document.removeEventListener('keydown', win._sift_nav_handler);
+        }
+
+        var _gPending = false;
+        var _gTimer = null;
+
+        function clickButton(label) {
+            var buttons = win.document.querySelectorAll('button');
+            for (var i = 0; i < buttons.length; i++) {
+                if (buttons[i].innerText.trim() === label && !buttons[i].disabled) {
+                    buttons[i].click();
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        function clickFocusToggle() {
+            var cb = win.document.querySelector('input[type="checkbox"]');
+            if (cb) { cb.click(); return true; }
+            return false;
+        }
+
+        // Click the segmented-control option whose full text contains `fragment`.
+        function clickView(fragment) {
+            var buttons = win.document.querySelectorAll('button');
+            for (var i = 0; i < buttons.length; i++) {
+                if (buttons[i].innerText.trim().toLowerCase().indexOf(fragment) !== -1) {
+                    buttons[i].click();
+                    return;
+                }
+            }
+        }
+
+        function focusSearch() {
+            var inputs = win.document.querySelectorAll('input[type="text"]');
+            for (var i = 0; i < inputs.length; i++) {
+                if ((inputs[i].placeholder || '').indexOf('Employer') !== -1) {
+                    inputs[i].focus();
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        win._sift_nav_handler = function (e) {
             var active = win.document.activeElement;
+
+            // Escape always blurs inputs, regardless of other guards
+            if (e.key === 'Escape' && active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) {
+                active.blur();
+                e.preventDefault();
+                return;
+            }
+
             if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) return;
+
+            // Second key of a g-chord
+            if (_gPending) {
+                clearTimeout(_gTimer);
+                _gPending = false;
+                if (e.key === 'i') { clickView('inbox'); e.preventDefault(); return; }
+                if (e.key === 's') { clickView('saved'); e.preventDefault(); return; }
+                if (e.key === 'h') { clickView('hidden'); e.preventDefault(); return; }
+                if (e.key === 'a') { clickView('all');   e.preventDefault(); return; }
+                // unrecognised second key — fall through to normal handling
+            }
+
+            // g starts a chord
+            if (e.key === 'g') {
+                _gPending = true;
+                _gTimer = setTimeout(function () { _gPending = false; }, 1000);
+                e.preventDefault();
+                return;
+            }
+
+            if (e.key === 'f') { clickFocusToggle(); return; }
+            if (e.key === '/') { if (focusSearch()) { e.preventDefault(); } return; }
             var label = null;
             if (e.key === 'ArrowLeft'  || e.key === 'j') label = '\u2039';
             if (e.key === 'ArrowRight' || e.key === 'k') label = '\u203a';
@@ -500,14 +624,9 @@ components.html(
             if (e.key === '2') label = '👍';
             if (e.key === '1') label = '👎';
             if (!label) return;
-            var buttons = win.document.querySelectorAll('button');
-            for (var i = 0; i < buttons.length; i++) {
-                if (buttons[i].innerText.trim() === label && !buttons[i].disabled) {
-                    buttons[i].click();
-                    return;
-                }
-            }
-        });
+            clickButton(label);
+        };
+        win.document.addEventListener('keydown', win._sift_nav_handler);
     })();
     </script>
     """,
