@@ -1,28 +1,54 @@
+from pathlib import Path
+
 import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
 
-from sift.store import delete_assessment, init_db, load_assessments, update_rating
+from sift.store import (
+    DB_PATH,
+    delete_assessment,
+    init_db,
+    load_assessments,
+    update_rating,
+)
 
 st.set_page_config(page_title="💘 Sifter", layout="wide")
 st.title("💘 Sifter")
 
 init_db()
-assessments = load_assessments()
+
+
+@st.cache_data
+def _load_assessments(mtime: float | None):
+    """Cache keyed on DB mtime — stale cache is automatically bypassed when the file changes."""
+    return load_assessments()
+
+
+@st.fragment(run_every=30)
+def _db_watcher():
+    mtime = DB_PATH.stat().st_mtime if DB_PATH.exists() else None
+    prev = st.session_state.get("_db_mtime")
+    st.session_state["_db_mtime"] = mtime
+    if prev is not None and mtime != prev:
+        st.rerun()
+
+
+_db_watcher()
+assessments = _load_assessments(st.session_state.get("_db_mtime"))
 
 if not assessments:
-    st.info("No assessments yet. Run the pipeline first.")
+    st.info("No listings yet. Run the pipeline first.")
     st.stop()
 
-SOURCE_DISPLAY = {
-    "stepstone": "StepStone",
-    "linkedin": "LinkedIn",
-    "manual-test": "Manual",
-}
+with open("resources/sources.toml", "rb") as _f:
+    import tomllib as _tomllib
+    _sources = _tomllib.load(_f)["sources"]
+SOURCE_DISPLAY = {s["name"]: s.get("display", s["name"].title()) for s in _sources}
+SOURCE_DISPLAY.setdefault("manual-test", "Manual")
 SUGGESTION_ICON = {"apply": "🟢", "consider": "🟡", "skip": "🔴"}
 FIT_ICON = {"high": "🟢", "medium": "🟡", "low": "🔴"}
 GAP_ICON = {"high": "🔴", "medium": "🟡", "low": "🟢"}
-RATING_ICON = {"new": "🆕", "liked": "👍", "disliked": "👎"}
+RATING_ICON = {"new": "✨", "liked": "👍", "disliked": "👎"}
 
 SUGGESTION_LABELS = {
     f"{SUGGESTION_ICON[v]} {v.title()}": v for v in ["apply", "consider", "skip"]
@@ -46,44 +72,75 @@ df["gap_risk"] = raw_df["gap_risk"].map(_DOT_INV)
 df["source"] = df["source"].map(lambda v: SOURCE_DISPLAY.get(v, v.title()))
 df["rating"] = raw_df["rating"].map(lambda v: RATING_ICON.get(v, "🆕"))
 
+# Apply a pending filter reset before any widgets are rendered
+if st.session_state.pop("_reset_filters", False):
+    st.session_state["rating_pills"] = list(RATING_LABELS)
+    st.session_state["filter_suggestion"] = list(SUGGESTION_LABELS)
+    st.session_state["filter_domain_fit"] = list(FIT_LABELS)
+    st.session_state["filter_role_fit"] = list(FIT_LABELS)
+    st.session_state["filter_gap_risk"] = list(GAP_LABELS)
+    st.session_state["filter_search"] = ""
+    st.session_state["filter_employers"] = []
+    st.session_state["filter_titles"] = []
+    st.query_params.clear()
+
 # --- Sidebar filters ---
 st.sidebar.header("Filters")
 
 # Predefined pills for ratings, suggestions, fits, and gap risk
-rating_labels = st.sidebar.pills(
-    "Rating",
-    options=list(RATING_LABELS),
-    default=[k for k, v in RATING_LABELS.items() if v in ("new", "liked")],
-    selection_mode="multi",
-) or list(RATING_LABELS)
+_all_rating_keys = list(RATING_LABELS)
+_default_rating_keys = [k for k, v in RATING_LABELS.items() if v in ("new", "liked")]
+_saved_rating_values = st.query_params.get_all("rating")  # ["new", "liked", ...]
+_initial_rating_keys = [
+    k for k, v in RATING_LABELS.items() if v in _saved_rating_values
+] or _default_rating_keys
+
+rating_labels = (
+    st.sidebar.pills(
+        "Rating",
+        options=_all_rating_keys,
+        default=_initial_rating_keys,
+        key="rating_pills",
+        selection_mode="multi",
+    )
+    or _all_rating_keys
+)
+
+if set(rating_labels) != set(_initial_rating_keys):
+    st.query_params["rating"] = [RATING_LABELS[k] for k in rating_labels]
+    st.rerun()
 suggestion_labels = st.sidebar.pills(
     "Suggestion",
     options=list(SUGGESTION_LABELS),
     default=list(SUGGESTION_LABELS),
+    key="filter_suggestion",
     selection_mode="multi",
 )
 domain_fit_labels = st.sidebar.pills(
     "Domain Fit",
     options=list(FIT_LABELS),
     default=list(FIT_LABELS),
+    key="filter_domain_fit",
     selection_mode="multi",
 )
 role_fit_labels = st.sidebar.pills(
     "Role Fit",
     options=list(FIT_LABELS),
     default=list(FIT_LABELS),
+    key="filter_role_fit",
     selection_mode="multi",
 )
 gap_risk_labels = st.sidebar.pills(
     "Gap Risk",
     options=list(GAP_LABELS),
     default=list(GAP_LABELS),
+    key="filter_gap_risk",
     selection_mode="multi",
 )
 
 # Search box for employer, title, or reasoning text
 search = st.sidebar.text_input(
-    "Search", placeholder="Employer, job title, listing, ..."
+    "Search", placeholder="Employer, job title, listing, ...", key="filter_search"
 )
 
 # Multi-select filters for employer and job title, populated from the dataset
@@ -95,6 +152,7 @@ selected_employers = (
             options=employers,
             default=None,
             placeholder="Filter by employer",
+            key="filter_employers",
         )
         or []
     )
@@ -110,6 +168,7 @@ selected_titles = (
             options=job_titles,
             default=None,
             placeholder="Filter by job title",
+            key="filter_titles",
         )
         or []
     )
@@ -117,16 +176,23 @@ selected_titles = (
     else []
 )
 
+st.sidebar.divider()
+if st.sidebar.button("Reset filters", use_container_width=True):
+    st.session_state["_reset_filters"] = True
+    st.rerun()
+
 # --- Apply filters ---
 suggestions = [SUGGESTION_LABELS[l] for l in suggestion_labels]
 domain_fits = [FIT_LABELS[l] for l in domain_fit_labels]
 role_fits = [FIT_LABELS[l] for l in role_fit_labels]
+gap_risks = [GAP_LABELS[l] for l in gap_risk_labels]
 ratings = [RATING_LABELS[l] for l in rating_labels]
 
 mask = (
     raw_df["suggestion"].isin(suggestions)
     & raw_df["domain_fit"].isin(domain_fits)
     & raw_df["role_fit"].isin(role_fits)
+    & raw_df["gap_risk"].isin(gap_risks)
     & raw_df["rating"].isin(ratings)
 )
 if selected_employers:
@@ -145,7 +211,7 @@ if search:
 filtered = df[mask].reset_index(drop=True)
 filtered_raw = raw_df[mask].reset_index(drop=True)
 
-st.caption(f"{len(filtered)} of {len(df)} assessments shown")
+st.caption(f"{len(filtered)} of {len(df)} listings shown")
 
 # --- Table ---
 TABLE_COLS = [
@@ -237,7 +303,12 @@ if selected_url:
         with _nav:
             _pc, _mc, _nc, _gap, _bc, _hc = st.columns([1, 1.5, 1, 0.3, 1, 1])
             with _pc:
-                if st.button("‹", disabled=_pos == 0, use_container_width=True):
+                if st.button(
+                    "‹",
+                    disabled=_pos == 0,
+                    use_container_width=True,
+                    help="Previous (Keyboard shortcut: Left Arrow or K)",
+                ):
                     st.session_state["selected_url"] = filtered_raw.iloc[_pos - 1][
                         "url"
                     ]
@@ -250,7 +321,10 @@ if selected_url:
                 )
             with _nc:
                 if st.button(
-                    "›", disabled=_pos >= _total - 1, use_container_width=True
+                    "›",
+                    disabled=_pos >= _total - 1,
+                    use_container_width=True,
+                    help="Next (Keyboard shortcut: Right Arrow or L)",
                 ):
                     st.session_state["selected_url"] = filtered_raw.iloc[_pos + 1][
                         "url"
@@ -263,12 +337,12 @@ if selected_url:
                     "👍",
                     type="primary" if _current_rating == "liked" else "secondary",
                     use_container_width=True,
-                    help="Like (b)",
+                    help="Like (Keyboard shortcut: B)",
                 ):
                     new_r = "new" if _current_rating == "liked" else "liked"
                     update_rating(selected_url, new_r)
                     st.session_state["_toast"] = (
-                        "Liked 👍" if new_r == "liked" else "Removed 👍"
+                        "👍 Liked" if new_r == "liked" else "👍 Removed"
                     )
                     if _next_url and new_r == "liked":
                         st.session_state["selected_url"] = _next_url
@@ -279,12 +353,12 @@ if selected_url:
                     "👎",
                     type="primary" if _current_rating == "disliked" else "secondary",
                     use_container_width=True,
-                    help="Dislike (x)",
+                    help="Dislike (Keyboard shortcut: X)",
                 ):
                     new_r = "new" if _current_rating == "disliked" else "disliked"
                     update_rating(selected_url, new_r)
                     st.session_state["_toast"] = (
-                        "Hidden 👎" if new_r == "disliked" else "Removed 👎"
+                        "👎 Hidden" if new_r == "disliked" else "👎 Removed"
                     )
                     if _next_url and new_r == "disliked":
                         st.session_state["selected_url"] = _next_url
