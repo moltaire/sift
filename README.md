@@ -38,7 +38,7 @@ LLM_MODEL=qwen3:14b
 
 Edit `resources/sources.toml` to configure which email folders to scan and what URL patterns to extract.
 
-Edit `resources/profile.md` and `resources/search-criteria.md` to describe yourself and what you're looking for.
+Copy `resources/profile.example.md` → `resources/profile.md` and `resources/search-criteria.example.md` → `resources/search-criteria.md`, then fill them in with your background and job search criteria. These files are gitignored so your personal details stay local.
 
 ### LinkedIn
 
@@ -62,6 +62,7 @@ python main.py [options]
 |---|---|---|
 | `--days N` | `3` | Fetch emails from the last N days |
 | `--unread` | off | Only process unread emails |
+| `--url URL` | — | Process a specific URL directly, bypassing email fetch (can be repeated) |
 | `--force` | off | Ignore the seen-URL cache and reprocess all fetched URLs |
 | `--mark-read` | off | Mark fetched emails as read after processing |
 | `--login-linkedin` | off | Open a headed browser to log in to LinkedIn and save the session |
@@ -101,8 +102,10 @@ sift/
   store.py               # SQLite persistence
   dashboard.py           # Streamlit dashboard
 resources/
-  profile.md             # Candidate profile (read by LLM)
-  search-criteria.md     # Job search criteria (read by LLM)
+  profile.md             # Candidate profile (read by LLM) — gitignored, copy from profile.example.md
+  search-criteria.md     # Job search criteria (read by LLM) — gitignored, copy from search-criteria.example.md
+  profile.example.md     # Template for profile.md
+  search-criteria.example.md  # Template for search-criteria.md
   sources.toml           # Email folder and URL pattern configuration
 data/
   sift.db                # SQLite database (gitignored)
