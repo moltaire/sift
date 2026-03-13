@@ -1,10 +1,18 @@
 [[sources]]
 folder = "Job Search/StepStone"
 name = "stepstone"
+display = "StepStone"
 url_pattern = "click\\.stepstone\\.de"
 
 [[sources]]
 folder = "Job Search/LinkedIn Job Alerts"
 name = "linkedin"
+display = "LinkedIn"
 url_pattern = "linkedin\\.com/comm/jobs/view"
 dedup_pattern = "/jobs/view/(\\d+)"
+
+[[sources]]
+folder = "Job Search/GoodJobs"
+name = "goodjobs"
+display = "GoodJobs"
+url_pattern = "brevo\\.net/tr/cl"
