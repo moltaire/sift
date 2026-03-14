@@ -7,7 +7,7 @@ A job screening tool that makes job ad discovery just as fun (🤷‍♂️) as 
 ## How it works
 
 1. **Fetch** — connects to your IMAP mailbox and extracts job URLs from configured email folders (StepStone, LinkedIn, etc.)
-2. **Scrape** — opens each URL in a headless Chromium browser (Playwright), follows redirects, and extracts the page text
+2. **Scrape** — fetches each URL using curl_cffi (impersonating a real browser) where possible, falling back to a headless Chromium browser (Playwright) for sites that require JavaScript or a logged-in session
 3. **Extract** — an LLM cleans the raw page text into a structured job listing (employer, title, language, listing text)
 4. **Assess** — a second LLM call scores the listing on domain fit, role fit, and gap risk against your profile and criteria, and produces a structured assessment with fit areas, gaps, and an overall recommendation
 5. **Store** — results are saved to `data/fumble.db` (SQLite)
@@ -22,7 +22,7 @@ URLs are cached after processing — re-running over the same date range skips a
 - Python 3.12+
 - [uv](https://docs.astral.sh/uv/) (recommended) or pip
 - [Ollama](https://ollama.com) running locally (or an OpenAI / Anthropic API key)
-- A Playwright-compatible Chromium install: `playwright install chromium`
+- A Playwright-compatible Chrome install: `uv run python -m playwright install chrome`
 
 ### Install
 
@@ -61,21 +61,23 @@ Edit `resources/sources.toml` to configure which email folders to scan and what 
 | Source | Notes |
 |---|---|
 | StepStone | Matches StepStone redirect links |
-| LinkedIn | Matches LinkedIn job alert emails; deduplicates by job ID |
+| LinkedIn | Matches LinkedIn job alert emails; deduplicates by job ID; uses browser scraper |
 | GoodJobs | Matches Brevo tracking links |
 | Climatebase | Matches SendGrid tracking links |
 
+Each source can optionally set `scraper = "browser"` to force Playwright (needed for login-required sites). The default is `"auto"` — curl first, browser fallback.
+
 Copy `resources/profile.example.md` → `resources/profile.md` and `resources/search-criteria.example.md` → `resources/search-criteria.md`, then fill them in with your background and job search criteria. These files are gitignored so your personal details stay local.
 
-### LinkedIn
+### Login-required sources
 
-LinkedIn requires a logged-in browser session. Run this once before the first pipeline run:
+Some sources (e.g. LinkedIn) require a logged-in browser session. Run this once before the first pipeline run:
 
 ```
-fumblebee --login-linkedin
+fumblebee --login https://www.linkedin.com/login
 ```
 
-Log in inside the browser window, then press Enter in the terminal. The session is saved to `data/browser_profile/` and reused automatically on every subsequent scrape.
+Log in inside the browser window, then press Enter in the terminal. The session is saved to `data/browser_profile/` and reused automatically on every subsequent scrape. Use the same command for any other source that requires login.
 
 ## Usage
 
@@ -94,7 +96,7 @@ fumblebee [options]
 | `--reassess` | off | Re-run LLM fit assessment on all stored listings without re-scraping; preserves ratings |
 | `--clear-ratings` | off | Reset all user ratings to `new` (prompts for confirmation) |
 | `--mark-read` | off | Mark fetched emails as read after processing |
-| `--login-linkedin` | off | Open a headed browser to log in to LinkedIn and save the session |
+| `--login URL` | — | Open a headed browser at URL to log in and save the session |
 
 ### Run the dashboard
 
@@ -129,7 +131,7 @@ The dashboard lets you:
 
 ## LLM providers
 
-Sift supports Ollama (local), OpenAI, and Anthropic via the `LLM_PROVIDER` and `LLM_MODEL` env vars. Only the SDK for the active provider needs to be installed.
+Fumble supports Ollama (local), OpenAI, and Anthropic via the `LLM_PROVIDER` and `LLM_MODEL` env vars. Only the SDK for the active provider needs to be installed.
 
 | Provider | Example model | Notes |
 |---|---|---|
@@ -145,7 +147,7 @@ Currently only tested on a M4 Pro 24GB MacBook Pro with Ollama using `qwen3.5:9b
 main.py                  # Pipeline entry point
 fumble/
   email_fetch.py         # IMAP connection and URL extraction
-  scrape.py              # Playwright scraping + persistent browser session
+  scrape.py              # curl_cffi scraping with Playwright fallback + persistent browser session
   extract.py             # LLM-based listing extraction
   assess.py              # LLM-based fit assessment
   llm.py                 # Provider-agnostic LLM call layer
