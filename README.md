@@ -126,7 +126,7 @@ Sift supports Ollama (local), OpenAI, and Anthropic via the `LLM_PROVIDER` and `
 
 | Provider | Example model | Notes |
 |---|---|---|
-| `ollama` | `qwen3.5:14b` | Default. Runs locally, no API cost. |
+| `ollama` | `qwen3.5:9b` | Default. Runs locally, no API cost. |
 | `openai` | `gpt-4o` | Requires `OPENAI_API_KEY` |
 | `anthropic` | `claude-opus-4-6` | Requires `ANTHROPIC_API_KEY` |
 
