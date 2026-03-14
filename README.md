@@ -2,7 +2,7 @@
 
 <img src="docs/screenshot.png" width="70%">
 
-Automated job ad screening pipeline. Fetches job URLs from alert emails, scrapes the listings, and uses an LLM to assess fit against your profile and search criteria. Results are stored in a local SQLite database and browsed via a Streamlit dashboard.
+A job screening tool that makes job ad discovery just as fun (🤷‍♂️) as Tinder. Fumble scrapes listings from your job alert emails, has an LLM assess each one against your profile and criteria, then lets you swipe through the results: liking, skipping, or superliking, until your inbox is clear.
 
 ## How it works
 
@@ -129,6 +129,8 @@ Sift supports Ollama (local), OpenAI, and Anthropic via the `LLM_PROVIDER` and `
 | `ollama` | `qwen3.5:14b` | Default. Runs locally, no API cost. |
 | `openai` | `gpt-4o` | Requires `OPENAI_API_KEY` |
 | `anthropic` | `claude-opus-4-6` | Requires `ANTHROPIC_API_KEY` |
+
+Currently only tested on a M4 Pro 24GB MacBook Pro with Ollama using `qwen3.5:9b`. `llama3.2` is much faster, but noticably inferior in results for both scraping and assessment. 
 
 ## Project structure
 
