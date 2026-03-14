@@ -65,11 +65,11 @@ def _extract_urls(text: str, pattern: str, dedup_pattern: str | None = None) -> 
     return result
 
 
-def fetch_job_urls(since: date | None = None, unread_only: bool = False, mark_read: bool = False) -> list[tuple[str, str]]:
+def fetch_job_urls(since: date | None = None, unread_only: bool = False, mark_read: bool = False) -> list[tuple[str, str, str]]:
     """
     Fetch emails from all configured folders.
     Uses UNSEEN if unread_only=True, otherwise fetches since a given date (default: 3 days).
-    Returns a list of (url, source) tuples.
+    Returns a list of (url, source, scraper) tuples.
     """
     if not unread_only and since is None:
         since = date.today() - timedelta(days=3)
@@ -83,6 +83,7 @@ def fetch_job_urls(since: date | None = None, unread_only: bool = False, mark_re
             folder = source["folder"]
             name = source["name"]
             pattern = source["url_pattern"]
+            scraper = source.get("scraper", "auto")
 
             server.select_folder(folder)
 
@@ -109,7 +110,7 @@ def fetch_job_urls(since: date | None = None, unread_only: bool = False, mark_re
                 urls = _extract_urls(body, pattern, dedup_pattern)
                 url_count += len(urls)
                 for url in urls:
-                    results.append((url, name))
+                    results.append((url, name, scraper))
 
             print(f"[{name}] {url_count} URL(s) extracted")
             if mark_read and uids:

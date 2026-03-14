@@ -10,6 +10,7 @@ name = "linkedin"
 display = "LinkedIn"
 url_pattern = "linkedin\\.com/comm/jobs/view"
 dedup_pattern = "/jobs/view/(\\d+)"
+scraper = "browser"
 
 [[sources]]
 folder = "Job Search/GoodJobs"

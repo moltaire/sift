@@ -39,15 +39,15 @@ def main():
     parser.add_argument("--days", type=int, default=3, help="Fetch emails from the last N days (default: 3)")
     parser.add_argument("--unread", action="store_true", help="Only process unread emails")
     parser.add_argument("--url", action="append", dest="urls", metavar="URL", help="Process a specific URL directly (can be repeated)")
-    parser.add_argument("--login-linkedin", action="store_true", help="Open a browser to log in to LinkedIn and save the session")
+    parser.add_argument("--login", metavar="URL", help="Open a headed browser at URL to log in and save the session")
     parser.add_argument("--force", action="store_true", help="Process all URLs, ignoring the seen-URL cache")
     parser.add_argument("--mark-read", action="store_true", help="Mark fetched emails as read after processing")
     parser.add_argument("--reassess", action="store_true", help="Re-run LLM assessment on all stored listings without re-scraping")
     parser.add_argument("--clear-ratings", action="store_true", help="Reset all user ratings to 'new' (with confirmation)")
     args = parser.parse_args()
 
-    if args.login_linkedin:
-        login_flow()
+    if args.login:
+        login_flow(start_url=args.login)
         return
 
     init_db()
@@ -96,7 +96,7 @@ def main():
         return
 
     if args.urls:
-        job_urls = [(url, "manual") for url in args.urls]
+        job_urls = [(url, "manual", "auto") for url in args.urls]
         print(f"Processing {len(job_urls)} manually provided URL(s)\n")
     elif args.unread:
         print("Fetching job URLs from unread emails...")
@@ -113,7 +113,7 @@ def main():
     skip_count = 0
     total = len(job_urls)
 
-    for i, (tracking_url, source) in enumerate(job_urls, 1):
+    for i, (tracking_url, source, scraper) in enumerate(job_urls, 1):
         if not args.force and tracking_url_seen(tracking_url):
             print(f"[{i}/{total}] [{source}] Already processed — skipping {tracking_url[:60]}")
             skip_count += 1
@@ -122,7 +122,7 @@ def main():
         print(f"[{i}/{total}] [{source}] Scraping {tracking_url[:60]}...")
 
         try:
-            job_text, canonical_url = scrape_job_page(tracking_url)
+            job_text, canonical_url = scrape_job_page(tracking_url, scraper=scraper)
             scraped_at = datetime.now(timezone.utc)
         except Exception as e:
             print(f"  Scrape failed: {e}")
