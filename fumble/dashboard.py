@@ -10,7 +10,7 @@ from fumble.store import (
     update_rating,
 )
 
-st.set_page_config(page_title="💘 Fumble", layout="wide")
+st.set_page_config(page_title="Fumble", layout="wide", page_icon="💘")
 st.title("💘 Fumble")
 
 # Read focus mode from the widget key (updated by Streamlit before the script runs on toggle

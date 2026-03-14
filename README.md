@@ -1,5 +1,7 @@
 # Fumble
 
+<img src="docs/screenshot.png" width="70%">
+
 Automated job ad screening pipeline. Fetches job URLs from alert emails, scrapes the listings, and uses an LLM to assess fit against your profile and search criteria. Results are stored in a local SQLite database and browsed via a Streamlit dashboard.
 
 ## How it works
