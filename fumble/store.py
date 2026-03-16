@@ -118,41 +118,64 @@ def save_assessment(a: Assessment) -> None:
 
 
 def update_assessment(a: Assessment) -> None:
-    """Overwrite analytical fields for an existing assessment, preserving user-managed fields."""
+    """Insert or overwrite an assessment, preserving user-managed fields (rating).
+    Warns if no rows were affected on update."""
+    params = (
+        a.url,
+        a.source,
+        a.scraped_at.isoformat(),
+        a.assessed_at.isoformat(),
+        a.assessed_model,
+        a.employer,
+        a.job_title,
+        a.language,
+        a.listing_text,
+        a.job_summary,
+        a.domain_fit,
+        a.domain_fit_reason,
+        a.role_fit,
+        a.role_fit_reason,
+        a.gap_risk,
+        a.gap_risk_reason,
+        json.dumps(a.fit_areas),
+        json.dumps([g.model_dump() for g in a.gaps]),
+        a.reasoning,
+        a.suggestion,
+    )
     with _connect() as conn:
-        conn.execute(
+        cur = conn.execute(
             """
-            UPDATE assessments SET
-                source = ?, scraped_at = ?, assessed_at = ?, assessed_model = ?,
-                employer = ?, job_title = ?, language = ?, listing_text = ?,
-                job_summary = ?, domain_fit = ?, domain_fit_reason = ?, role_fit = ?,
-                role_fit_reason = ?, gap_risk = ?, gap_risk_reason = ?, fit_areas = ?,
-                gaps = ?, reasoning = ?, suggestion = ?
-            WHERE url = ?
+            INSERT INTO assessments
+                (url, source, scraped_at, assessed_at, assessed_model, employer, job_title,
+                 language, listing_text, job_summary, domain_fit, domain_fit_reason,
+                 role_fit, role_fit_reason, gap_risk, gap_risk_reason, fit_areas, gaps,
+                 reasoning, suggestion)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(url) DO UPDATE SET
+                source          = excluded.source,
+                scraped_at      = excluded.scraped_at,
+                assessed_at     = excluded.assessed_at,
+                assessed_model  = excluded.assessed_model,
+                employer        = excluded.employer,
+                job_title       = excluded.job_title,
+                language        = excluded.language,
+                listing_text    = excluded.listing_text,
+                job_summary     = excluded.job_summary,
+                domain_fit      = excluded.domain_fit,
+                domain_fit_reason = excluded.domain_fit_reason,
+                role_fit        = excluded.role_fit,
+                role_fit_reason = excluded.role_fit_reason,
+                gap_risk        = excluded.gap_risk,
+                gap_risk_reason = excluded.gap_risk_reason,
+                fit_areas       = excluded.fit_areas,
+                gaps            = excluded.gaps,
+                reasoning       = excluded.reasoning,
+                suggestion      = excluded.suggestion
         """,
-            (
-                a.source,
-                a.scraped_at.isoformat(),
-                a.assessed_at.isoformat(),
-                a.assessed_model,
-                a.employer,
-                a.job_title,
-                a.language,
-                a.listing_text,
-                a.job_summary,
-                a.domain_fit,
-                a.domain_fit_reason,
-                a.role_fit,
-                a.role_fit_reason,
-                a.gap_risk,
-                a.gap_risk_reason,
-                json.dumps(a.fit_areas),
-                json.dumps([g.model_dump() for g in a.gaps]),
-                a.reasoning,
-                a.suggestion,
-                a.url,
-            ),
+            params,
         )
+        if cur.rowcount == 0:
+            print(f"  Warning: update_assessment affected 0 rows for {a.url}")
 
 
 def update_rating(url: str, rating: str) -> None:

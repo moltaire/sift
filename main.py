@@ -8,7 +8,7 @@ from fumble.email_fetch import fetch_job_urls
 from fumble.extract import extract_listing, is_listing_quick
 from fumble.scrape import login_flow, scrape_job_page
 from fumble.extract import JobListing
-from fumble.store import clear_ratings, init_db, load_assessments, mark_url_seen, save_assessment, update_assessment, tracking_url_seen, url_exists
+from fumble.store import clear_ratings, init_db, load_assessments, mark_url_seen, save_assessment, update_assessment, tracking_url_seen
 
 PROFILE = Path("resources/profile.md").read_text()
 CRITERIA = Path("resources/search-criteria.md").read_text()
@@ -204,7 +204,7 @@ def main():
             skip_count += 1
             continue
 
-        if args.force and url_exists(canonical_url):
+        if args.force:
             update_assessment(result)
         else:
             save_assessment(result)
