@@ -16,7 +16,7 @@ scraper = "browser"
 folder = "Job Search/GoodJobs"
 name = "goodjobs"
 display = "GoodJobs"
-url_pattern = "brevo\\.net/tr/cl"
+url_pattern = "brevo\\.net/tr/cl|list-manage\\.com/track/click"
 
 [[sources]]
 folder = "Job Search/Climatebase"

@@ -7,8 +7,7 @@ from fumble.llm import EXTRACT_MODEL, PROVIDER, TRIAGE_MODEL, call_llm
 SYSTEM_PROMPT = """You are a precise text extraction assistant.
 Your first job is to determine whether the input actually contains a job listing.
 If it does, extract and clean the listing content.
-If it does not — e.g. it is a login wall, cookie notice, error page, job search results page, or otherwise lacks a specific job advertisement — set is_job_listing to false and leave all other fields empty.
-Think concisely — limit reasoning to essential steps."""
+If it does not — e.g. it is a login wall, cookie notice, error page, job search results page, or otherwise lacks a specific job advertisement — set is_job_listing to false and leave all other fields empty."""
 
 USER_PROMPT = """## Raw scraped content
 {raw_text}
@@ -69,10 +68,7 @@ def is_listing_quick(text: str) -> bool:
         return True  # safe default: never filter on error
 
 
-EXTRACT_OPTIONS = {"num_predict": 8000, "top_k": 20, "presence_penalty": 1.5}
-
-
 def extract_listing(raw_text: str) -> JobListing:
     prompt = USER_PROMPT.format(raw_text=raw_text)
-    content = call_llm(SYSTEM_PROMPT, prompt, JobListing.model_json_schema(), model=EXTRACT_MODEL, temperature=0, extra_options=EXTRACT_OPTIONS)
+    content = call_llm(SYSTEM_PROMPT, prompt, JobListing.model_json_schema(), model=EXTRACT_MODEL)
     return JobListing.model_validate_json(content)

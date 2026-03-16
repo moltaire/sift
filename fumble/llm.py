@@ -14,10 +14,10 @@ TRIAGE_MODEL = os.getenv("LLM_TRIAGE_MODEL", "llama3.2")
 DEBUG = os.getenv("DEBUG_LLM", "").strip() == "1"
 
 
-def call_llm(system: str, prompt: str, schema: dict, temperature: float | None = None, think: bool = True, model: str | None = None, extra_options: dict | None = None) -> str:
+def call_llm(system: str, prompt: str, schema: dict, temperature: float | None = None, think: bool = True, model: str | None = None) -> str:
     """Call the configured LLM provider and return raw JSON string matching schema."""
     if PROVIDER == "ollama":
-        return _call_ollama(system, prompt, schema, temperature, think, model or MODEL, extra_options)
+        return _call_ollama(system, prompt, schema, temperature, think, model or MODEL)
     elif PROVIDER == "openai":
         return _call_openai(system, prompt, schema, temperature)
     elif PROVIDER == "anthropic":
@@ -26,7 +26,7 @@ def call_llm(system: str, prompt: str, schema: dict, temperature: float | None =
         raise ValueError(f"Unknown LLM_PROVIDER: {PROVIDER!r}")
 
 
-def _call_ollama(system: str, prompt: str, schema: dict, temperature: float | None, think: bool, model: str, extra_options: dict | None = None) -> str:
+def _call_ollama(system: str, prompt: str, schema: dict, temperature: float | None, think: bool, model: str) -> str:
     import ollama
 
     kwargs = dict(
@@ -37,11 +37,8 @@ def _call_ollama(system: str, prompt: str, schema: dict, temperature: float | No
         ],
         format=schema,
     )
-    options = dict(extra_options or {})
     if temperature is not None:
-        options["temperature"] = temperature  # named param takes precedence
-    if options:
-        kwargs["options"] = options
+        kwargs["options"] = {"temperature": temperature}
     if not think:
         kwargs["think"] = False
     t0 = time.monotonic()
@@ -98,7 +95,6 @@ def _call_anthropic(system: str, prompt: str, schema: dict, temperature: float) 
 
 def _extract_json(text: str) -> str:
     """Strip prose and code fences that Anthropic sometimes wraps around JSON."""
-    # Try to find a JSON object in the response
     match = re.search(r"\{.*\}", text, re.DOTALL)
     if match:
         candidate = match.group(0)
