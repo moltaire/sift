@@ -63,5 +63,5 @@ def is_listing_quick(text: str) -> bool:
 
 def extract_listing(raw_text: str) -> JobListing:
     prompt = USER_PROMPT.format(raw_text=raw_text)
-    content = call_llm(SYSTEM_PROMPT, prompt, JobListing.model_json_schema(), model=EXTRACT_MODEL)
+    content = call_llm(SYSTEM_PROMPT, prompt, JobListing.model_json_schema(), model=EXTRACT_MODEL, think=False, temperature=0)
     return JobListing.model_validate_json(content)

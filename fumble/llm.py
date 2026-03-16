@@ -49,7 +49,8 @@ def _call_ollama(system: str, prompt: str, schema: dict, temperature: float | No
         thinking = getattr(response.message, "thinking", None)
         think_len = len(thinking) if thinking else 0
         print(f"  [llm] {elapsed:.1f}s | think={think_len}chars | output={len(content or '')}chars")
-        print(f"  [llm] raw: {(content or '')[:300]!r}")
+        debug_chars = int(os.getenv("DEBUG_LLM_CHARS", "300"))
+        print(f"  [llm] raw: {(content or '')[:debug_chars]!r}")
     if not content:
         raise ValueError("LLM returned empty response")
     return content
