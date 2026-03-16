@@ -8,7 +8,7 @@ from fumble.llm import MODEL, PROVIDER, call_llm
 
 SYSTEM_PROMPT = """You are a precise job screening assistant.
 Assess how well a job listing matches a candidate's profile and search criteria.
-Be concise and direct."""
+Be concise and direct. Think concisely — limit reasoning to essential steps."""
 
 USER_PROMPT = """## Candidate Profile
 {profile_text}
@@ -96,6 +96,7 @@ def assess_fit(
         SYSTEM_PROMPT,
         prompt,
         FitResult.model_json_schema(),
+        extra_options={"temperature": 0.6, "num_predict": 1500, "top_k": 20, "presence_penalty": 1.5},
     )
     fit = FitResult.model_validate_json(content)
 
