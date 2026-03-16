@@ -1,3 +1,4 @@
+from dateutil import tz
 import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
@@ -89,10 +90,10 @@ _REFINE_DEFAULTS: dict = {
 }
 
 raw_df = pd.DataFrame([a.model_dump() for a in assessments])
-raw_df["scraped_at"] = pd.to_datetime(raw_df["scraped_at"], utc=True).dt.strftime(
+raw_df["scraped_at"] = pd.to_datetime(raw_df["scraped_at"], utc=True).dt.tz_convert(tz.tzlocal()).dt.strftime(
     "%Y-%m-%d %H:%M"
 )
-raw_df["assessed_at"] = pd.to_datetime(raw_df["assessed_at"], utc=True).dt.strftime(
+raw_df["assessed_at"] = pd.to_datetime(raw_df["assessed_at"], utc=True).dt.tz_convert(tz.tzlocal()).dt.strftime(
     "%Y-%m-%d %H:%M"
 )
 
