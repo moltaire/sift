@@ -40,15 +40,15 @@ Assess this job listing against the profile and criteria above.
 - severity: minor (easily addressed or not critical) / manageable (real gap but not disqualifying) / severe (likely dealbreaker).
 
 **Before choosing a suggestion, answer this question first:**
-Does this role require analytical, data, or research work as its primary day-to-day function?
-- If NO → suggestion must be spam. The company's domain is irrelevant. A mechanic at a sustainability company is still a mechanic.
+Does this role's primary day-to-day function fall within the candidate's target role types (as listed in the Search Criteria above)?
+- If NO → suggestion must be spam. The organisation's domain is irrelevant — the role itself must match.
 - If YES → continue to apply / consider / skip below.
 
 **suggestion**: apply / consider / skip / spam
-- spam: primary tasks are not analytical/data/research — wrong profession entirely (mechanic, nurse, waiter, driver, lawyer, warehouse, repair technician, etc.)
+- spam: role's primary tasks are outside the candidate's target role types entirely — wrong profession, regardless of employer
 - apply: strong role and domain match — worth applying
 - consider: role type is correct, partial fit — worth reviewing
-- skip: role type is broadly correct (data/research/analytical) but fit is too weak to pursue
+- skip: role type is broadly correct but fit is too weak to pursue
 
 **reasoning**: 2 sentences maximum. Lead with the decisive factor, then the trade-off or caveat if any. Plain text, no bullet points.
 """

@@ -92,12 +92,11 @@ Is this listing clearly irrelevant for this candidate?
 Focus on what the ROLE ITSELF requires day-to-day, not the organisation's domain.
 A café waiter job at a social enterprise is still a café waiter job.
 
-Flag as spam (is_spam=true) when the role's actual tasks are clearly unrelated:
+Flag as spam (is_spam=true) when the role's actual tasks are clearly outside the candidate's target role types:
 - Internship / student / trainee position (Praktikum, Werkstudent, Auszubildender, Volontariat)
-- Role tasks are manual / physical / service work with no analytical component: repair/maintenance technician, mechanic, trades, cooking, serving, cleaning, driving, nursing, cashier, warehouse, security
-- Role is purely clinical, legal, or administrative with no data or research component
+- Role tasks are clearly a different profession with no overlap with the target roles: manual/physical work, trades, repair, cooking, serving, cleaning, driving, nursing, cashier, warehouse, security, purely legal or purely clinical roles
 
-A tech or sustainability company does not make a physical role relevant — a mechanic at an e-scooter company is still a mechanic.
+The organisation's domain is irrelevant — the role itself must fall within the target role types.
 
 Do NOT flag as spam:
 - Roles adjacent to the candidate's target domains
