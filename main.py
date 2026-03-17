@@ -44,6 +44,7 @@ def main():
     parser.add_argument("--mark-read", action="store_true", help="Mark fetched emails as read after processing")
     parser.add_argument("--reassess", action="store_true", help="Re-run LLM assessment on all stored listings without re-scraping")
     parser.add_argument("--clear-ratings", action="store_true", help="Reset all user ratings to 'new' (with confirmation)")
+    parser.add_argument("--backfill-embeddings", action="store_true", help="Embed all stored assessments that don't yet have an embedding, then exit")
     args = parser.parse_args()
 
     if args.login:
@@ -68,6 +69,11 @@ def main():
             print(f"Cleared {n} rating(s).")
         else:
             print("Aborted.")
+        return
+
+    if args.backfill_embeddings:
+        from fumble.embeddings import backfill
+        backfill()
         return
 
     if args.reassess:
@@ -189,7 +195,9 @@ def main():
             continue
 
         print(f"  Spam check...")
-        is_spam, spam_reason = spam_filter(listing.listing_text, CRITERIA)
+        is_spam, spam_reason = spam_filter(listing.job_title, listing.listing_text, CRITERIA)
+        spam_model = f"spam/{TRIAGE_MODEL}"
+
         if is_spam:
             print(f"  Spam filtered: {spam_reason}")
             now = datetime.now(timezone.utc)
@@ -210,7 +218,7 @@ def main():
                 source=source,
                 scraped_at=scraped_at,
                 assessed_at=now,
-                assessed_model=f"spam/{TRIAGE_MODEL}",
+                assessed_model=spam_model,
                 rating="spam",
             )
             save_assessment(spam_assessment)

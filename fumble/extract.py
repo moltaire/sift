@@ -133,13 +133,18 @@ class _SpamResult(BaseModel):
     reason: str = ""
 
 
-def spam_filter(listing_text: str, criteria_text: str) -> tuple[bool, str]:
-    """Fast spam check. Returns (is_spam, reason). Conservatively returns (False, '') on error."""
-    combined = listing_text.lower()
+def keyword_spam_check(job_title: str, criteria_text: str) -> tuple[bool, str]:
+    """Keyword-only spam pre-filter. Matches against job title only.
+    Returns (is_spam, matched_keyword)."""
+    title = job_title.lower()
     for keyword in _load_spam_keywords(criteria_text):
-        if keyword in combined:
+        if keyword in title:
             return True, keyword
+    return False, ""
 
+
+def llm_spam_check(listing_text: str, criteria_text: str) -> tuple[bool, str]:
+    """LLM semantic spam check. Returns (is_spam, reason). Conservatively returns (False, '') on error."""
     prompt = _SPAM_PROMPT.format(
         criteria_text=criteria_text,
         listing_text=listing_text[:_SPAM_CHAR_LIMIT],
@@ -153,3 +158,11 @@ def spam_filter(listing_text: str, criteria_text: str) -> tuple[bool, str]:
         return result.is_spam, result.reason
     except Exception:
         return False, ""
+
+
+def spam_filter(job_title: str, listing_text: str, criteria_text: str) -> tuple[bool, str]:
+    """Fast spam check (keywords then LLM). Returns (is_spam, reason)."""
+    is_spam, reason = keyword_spam_check(job_title, criteria_text)
+    if is_spam:
+        return True, reason
+    return llm_spam_check(listing_text, criteria_text)

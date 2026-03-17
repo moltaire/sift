@@ -3,6 +3,8 @@ import sqlite3
 from datetime import datetime
 from pathlib import Path
 
+import numpy as np
+
 from fumble.assess import Assessment
 
 DB_PATH = Path("data/fumble.db")
@@ -67,6 +69,25 @@ def init_db() -> None:
                 conn.execute(f"ALTER TABLE assessments ADD COLUMN {col}")
             except sqlite3.OperationalError:
                 pass
+
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS embeddings (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                assessment_id INTEGER NOT NULL REFERENCES assessments(id) ON DELETE CASCADE,
+                model         TEXT NOT NULL,
+                input_type    TEXT NOT NULL,
+                embedding     BLOB NOT NULL,
+                embedded_at   TEXT NOT NULL
+            )
+        """
+        )
+        conn.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_embeddings_unique
+                ON embeddings(assessment_id, model, input_type)
+        """
+        )
 
         # Migrate bookmarked/hidden → rating (for older databases that have these columns)
         try:
@@ -255,6 +276,56 @@ def load_assessments() -> list[Assessment]:
             "SELECT * FROM assessments WHERE (rating IS NULL OR rating != 'spam') ORDER BY scraped_at DESC"
         ).fetchall()
     return _rows_to_assessments(rows)
+
+
+def get_assessment_id(url: str) -> int | None:
+    """Return the integer primary key for a URL, or None if not found."""
+    with _connect() as conn:
+        row = conn.execute("SELECT id FROM assessments WHERE url = ?", (url,)).fetchone()
+    return row["id"] if row else None
+
+
+_LABEL_MAP: dict[str, str] = {
+    "spam": "spam",
+    "disliked": "good",
+    "liked": "good",
+    "superliked": "good",
+}
+
+
+def store_embedding(assessment_id: int, model: str, input_type: str, vec: np.ndarray) -> None:
+    """Upsert an embedding into the embeddings table."""
+    blob = vec.astype(np.float32).tobytes()
+    with _connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO embeddings (assessment_id, model, input_type, embedding, embedded_at)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(assessment_id, model, input_type) DO UPDATE SET
+                embedding   = excluded.embedding,
+                embedded_at = excluded.embedded_at
+        """,
+            (assessment_id, model, input_type, blob, datetime.now().isoformat()),
+        )
+
+
+def load_labelled_embeddings(model: str, input_type: str) -> list[tuple[np.ndarray, str]]:
+    """Return [(vec, label), ...] for all assessments with a training label."""
+    with _connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT e.embedding, a.rating
+            FROM embeddings e
+            JOIN assessments a ON e.assessment_id = a.id
+            WHERE e.model = ? AND e.input_type = ?
+              AND a.rating IN ('spam', 'disliked', 'liked', 'superliked')
+            """,
+            (model, input_type),
+        ).fetchall()
+    return [
+        (np.frombuffer(row["embedding"], dtype=np.float32).copy(), _LABEL_MAP[row["rating"]])
+        for row in rows
+    ]
 
 
 def load_spam() -> list[Assessment]:
