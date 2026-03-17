@@ -3,18 +3,12 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import urlparse, urlunparse
 
-import numpy as np
-
 from fumble.assess import Assessment, assess_fit
 from fumble.email_fetch import fetch_job_urls
-from fumble.embeddings import EMBED_MODEL, classify_spam, embed_text
-from fumble.extract import JobListing, extract_listing, is_listing_quick, keyword_spam_check, llm_spam_check
+from fumble.extract import JobListing, extract_listing, is_listing_quick, spam_filter
 from fumble.llm import TRIAGE_MODEL
 from fumble.scrape import login_flow, scrape_job_page
-from fumble import store
-from fumble.store import clear_ratings, get_assessment_id, init_db, load_assessments, load_labelled_embeddings, mark_url_seen, save_assessment, store_embedding, update_assessment, tracking_url_seen, url_exists
-
-MIN_EMBEDDING_CORPUS = 10  # minimum labelled samples before trusting the embedding classifier
+from fumble.store import clear_ratings, init_db, load_assessments, mark_url_seen, save_assessment, update_assessment, tracking_url_seen, url_exists
 
 PROFILE = Path("resources/profile.md").read_text()
 CRITERIA = Path("resources/search-criteria.md").read_text()
@@ -50,7 +44,6 @@ def main():
     parser.add_argument("--mark-read", action="store_true", help="Mark fetched emails as read after processing")
     parser.add_argument("--reassess", action="store_true", help="Re-run LLM assessment on all stored listings without re-scraping")
     parser.add_argument("--clear-ratings", action="store_true", help="Reset all user ratings to 'new' (with confirmation)")
-    parser.add_argument("--no-embedding-filter", action="store_true", help="Skip the embedding-based spam filter and use the LLM spam check instead")
     parser.add_argument("--backfill-embeddings", action="store_true", help="Embed all stored assessments that don't yet have an embedding, then exit")
     args = parser.parse_args()
 
@@ -202,28 +195,8 @@ def main():
             continue
 
         print(f"  Spam check...")
-        is_spam, spam_reason = keyword_spam_check(listing.job_title, CRITERIA)
-        spam_model = "spam/keywords"
-
-        title_vec: np.ndarray | None = None
-        if not is_spam:
-            if not args.no_embedding_filter:
-                title_input = f"{listing.job_title} at {listing.employer}"
-                try:
-                    title_vec = embed_text(title_input, model=EMBED_MODEL)
-                    labelled = load_labelled_embeddings(model=EMBED_MODEL, input_type="title")
-                    if len(labelled) >= MIN_EMBEDDING_CORPUS:
-                        label = classify_spam(title_vec, labelled)
-                        if label == "spam":
-                            is_spam = True
-                            spam_reason = "embedding classifier"
-                            spam_model = f"spam/embedding/{EMBED_MODEL}"
-                except Exception as e:
-                    print(f"  Embedding check failed (falling back to LLM): {e}")
-
-            if not is_spam:
-                is_spam, spam_reason = llm_spam_check(listing.listing_text, CRITERIA)
-                spam_model = f"spam/{TRIAGE_MODEL}"
+        is_spam, spam_reason = spam_filter(listing.job_title, listing.listing_text, CRITERIA)
+        spam_model = f"spam/{TRIAGE_MODEL}"
 
         if is_spam:
             print(f"  Spam filtered: {spam_reason}")
@@ -249,10 +222,6 @@ def main():
                 rating="spam",
             )
             save_assessment(spam_assessment)
-            if title_vec is not None:
-                assessment_id = get_assessment_id(canonical_url)
-                if assessment_id:
-                    store_embedding(assessment_id, EMBED_MODEL, "title", title_vec)
             mark_url_seen(tracking_url)
             mark_url_seen(canonical_url)
             skip_count += 1
@@ -280,10 +249,6 @@ def main():
             update_assessment(result)
         else:
             save_assessment(result)
-        if title_vec is not None:
-            assessment_id = get_assessment_id(canonical_url)
-            if assessment_id:
-                store_embedding(assessment_id, EMBED_MODEL, "title", title_vec)
         mark_url_seen(tracking_url)
         mark_url_seen(canonical_url)
         print(f"  [{result.suggestion}] {result.domain_fit}/{result.role_fit} — {result.job_summary}")
