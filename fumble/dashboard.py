@@ -81,7 +81,7 @@ with open("resources/sources.toml", "rb") as _f:
     _sources = _tomllib.load(_f)["sources"]
 SOURCE_DISPLAY = {s["name"]: s.get("display", s["name"].title()) for s in _sources}
 SOURCE_DISPLAY.setdefault("manual-test", "Manual")
-SUGGESTION_ICON = {"apply": "🟢", "consider": "🟡", "skip": "🔴"}
+SUGGESTION_ICON = {"apply": "🟢", "consider": "🟡", "skip": "🔴", "spam": "🚫"}
 FIT_ICON = {"high": "🟢", "medium": "🟡", "low": "🔴"}
 GAP_ICON = {"high": "🔴", "medium": "🟡", "low": "🟢"}
 RATING_ICON = {
@@ -93,7 +93,7 @@ RATING_ICON = {
 }
 
 SUGGESTION_LABELS = {
-    f"{SUGGESTION_ICON[v]} {v.title()}": v for v in ["apply", "consider", "skip"]
+    f"{SUGGESTION_ICON[v]} {v.title()}": v for v in ["apply", "consider", "skip", "spam"]
 }
 FIT_LABELS = {f"{FIT_ICON[v]} {v}": v for v in ["high", "medium", "low"]}
 GAP_LABELS = {
@@ -436,7 +436,7 @@ else:
 
 if _current_view == "⭐ Saved":
     _fit_ord = {"high": 0, "medium": 1, "low": 2}
-    _sug_ord = {"apply": 0, "consider": 1, "skip": 2}
+    _sug_ord = {"apply": 0, "consider": 1, "skip": 2, "spam": 3}
     _gap_ord = {"low": 0, "medium": 1, "high": 2}
     _sort_keys = pd.DataFrame(
         {

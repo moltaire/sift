@@ -8,7 +8,7 @@ from fumble.email_fetch import fetch_job_urls
 from fumble.extract import JobListing, extract_listing, is_listing_quick, spam_filter
 from fumble.llm import TRIAGE_MODEL
 from fumble.scrape import login_flow, scrape_job_page
-from fumble.store import clear_ratings, init_db, load_assessments, mark_url_seen, save_assessment, update_assessment, tracking_url_seen, url_exists
+from fumble.store import clear_ratings, init_db, load_assessments, mark_url_seen, save_assessment, update_assessment, update_rating, tracking_url_seen, url_exists
 
 PROFILE = Path("resources/profile.md").read_text()
 CRITERIA = Path("resources/search-criteria.md").read_text()
@@ -89,6 +89,8 @@ def main():
             try:
                 result = assess_fit(listing=listing, profile_text=PROFILE, criteria_text=CRITERIA, url=a.url, source=a.source, scraped_at=a.scraped_at)
                 update_assessment(result)
+                if result.suggestion == "spam":
+                    update_rating(a.url, "spam")
                 print(f"  [{result.suggestion}] {result.domain_fit}/{result.role_fit} — {result.job_summary}")
                 ok += 1
             except Exception as e:
@@ -239,8 +241,14 @@ def main():
             skip_count += 1
             continue
 
+        if result.suggestion == "spam":
+            result.rating = "spam"
+            print(f"  Spam (assessment): {result.job_summary}")
+
         if args.force:
             update_assessment(result)
+            if result.suggestion == "spam":
+                update_rating(canonical_url, "spam")
         else:
             save_assessment(result)
         mark_url_seen(tracking_url)

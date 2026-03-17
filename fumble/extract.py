@@ -119,9 +119,8 @@ def _load_spam_keywords(criteria_text: str) -> list[str]:
             if line.startswith("## "):
                 break
             stripped = line.strip()
-            if stripped.startswith("#") or not stripped:
+            if not stripped.startswith("-"):
                 continue
-            # Strip leading list marker if present
             keyword = stripped.lstrip("-").strip().lower()
             if keyword:
                 keywords.append(keyword)
