@@ -43,7 +43,7 @@ Assess this job listing against the profile and criteria above.
 - apply: strong match on role type and domain — worth applying
 - consider: partial match — worth reviewing in detail
 - skip: within scope but weak fit — not worth pursuing
-- spam: clearly the wrong profession entirely (e.g. waiter, nurse, lawyer, warehouse). Use only when the role would never be relevant regardless of domain — not just a weak fit.
+- spam: the role's day-to-day tasks are clearly the wrong profession — regardless of the company's domain. A mechanic role at a tech company is still a mechanic role. Examples: repair/maintenance technician, waiter, nurse, warehouse operative, lawyer, driver. Use this whenever the actual job tasks have no analytical or research component.
 
 **reasoning**: 2 sentences maximum. Lead with the decisive factor, then the trade-off or caveat if any. Plain text, no bullet points.
 """
