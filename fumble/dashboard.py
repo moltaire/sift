@@ -631,30 +631,9 @@ if selected_url:
             _current_rating = row["rating"]
             # Toggle must render before any button that calls st.rerun(),
             # otherwise the RerunException stops the script before it registers.
-            if view == "🚫 Spam":
-                _rc, _, _focus = st.columns([2, 1 / 3, 2 / 3], gap="small")
-                with _focus:
-                    _focus_mode = st.toggle(
-                        "Focus",
-                        key="focus_mode",
-                        value=st.session_state.get("_focus_persisted", False),
-                    )
-                    st.session_state["_focus_persisted"] = _focus_mode
-                with _rc:
-                    if st.button(
-                        "📬 Restore to Inbox",
-                        use_container_width=True,
-                        help="Move back to inbox for full assessment",
-                    ):
-                        update_rating(selected_url, "new")
-                        _load_spam.clear()
-                        if _next_url:
-                            st.session_state["selected_url"] = _next_url
-                            st.session_state["_from_nav"] = True
-                        st.rerun()
-            else:
-                _hc, _bc, _sc, _, _focus = st.columns(
-                    [1, 1, 1, 1 / 3, 2 / 3], gap="small"
+            if True:  # same button row for all views
+                _spam_c, _hc, _bc, _sc, _, _focus = st.columns(
+                    [1, 1, 1, 1, 1 / 3, 2 / 3], gap="small"
                 )
                 with _focus:
                     _focus_mode = st.toggle(
@@ -663,22 +642,40 @@ if selected_url:
                         value=st.session_state.get("_focus_persisted", False),
                     )
                     st.session_state["_focus_persisted"] = _focus_mode
-                with _sc:
+                with _spam_c:
+                    if view == "🚫 Spam":
+                        _spam_help = "Restore to Inbox (Keyboard: 1)"
+                    else:
+                        _spam_help = "Spam (Keyboard: 1)"
                     if st.button(
-                        "🌟",
-                        type=(
-                            "primary"
-                            if _current_rating == "superliked"
-                            else "secondary"
-                        ),
+                        "🚫",
+                        type="primary" if _current_rating == "spam" else "secondary",
                         use_container_width=True,
-                        help="Superlike (Keyboard: 3)",
+                        help=_spam_help,
                     ):
-                        new_r = (
-                            "new" if _current_rating == "superliked" else "superliked"
-                        )
+                        new_r = "new" if view == "🚫 Spam" else "spam"
                         update_rating(selected_url, new_r)
                         _load_assessments.clear()
+                        _load_spam.clear()
+                        if _next_url:
+                            st.session_state["selected_url"] = _next_url
+                            st.session_state["_from_nav"] = True
+                        else:
+                            st.session_state.pop("selected_url", None)
+                        st.rerun()
+                with _hc:
+                    if st.button(
+                        "👎",
+                        type=(
+                            "primary" if _current_rating == "disliked" else "secondary"
+                        ),
+                        use_container_width=True,
+                        help="Dislike (Keyboard: 2)",
+                    ):
+                        new_r = "new" if _current_rating == "disliked" else "disliked"
+                        update_rating(selected_url, new_r)
+                        _load_assessments.clear()
+                        _load_spam.clear()
                         if _next_url and new_r != "new":
                             st.session_state["selected_url"] = _next_url
                             st.session_state["_from_nav"] = True
@@ -688,27 +685,33 @@ if selected_url:
                         "👍",
                         type="primary" if _current_rating == "liked" else "secondary",
                         use_container_width=True,
-                        help="Like (Keyboard: 2)",
+                        help="Like (Keyboard: 3)",
                     ):
                         new_r = "new" if _current_rating == "liked" else "liked"
                         update_rating(selected_url, new_r)
                         _load_assessments.clear()
+                        _load_spam.clear()
                         if _next_url and new_r != "new":
                             st.session_state["selected_url"] = _next_url
                             st.session_state["_from_nav"] = True
                         st.rerun()
-                with _hc:
+                with _sc:
                     if st.button(
-                        "👎",
+                        "🌟",
                         type=(
-                            "primary" if _current_rating == "disliked" else "secondary"
+                            "primary"
+                            if _current_rating == "superliked"
+                            else "secondary"
                         ),
                         use_container_width=True,
-                        help="Dislike (Keyboard: 1)",
+                        help="Superlike (Keyboard: 4)",
                     ):
-                        new_r = "new" if _current_rating == "disliked" else "disliked"
+                        new_r = (
+                            "new" if _current_rating == "superliked" else "superliked"
+                        )
                         update_rating(selected_url, new_r)
                         _load_assessments.clear()
+                        _load_spam.clear()
                         if _next_url and new_r != "new":
                             st.session_state["selected_url"] = _next_url
                             st.session_state["_from_nav"] = True
@@ -807,20 +810,6 @@ if selected_url:
                             st.caption(f"- {icon} {gap['description']}")
 
             st.divider()
-            if view != "🚫 Spam" and st.button(
-                "🚫 Mark as spam",
-                key="spam_btn",
-                width="stretch",
-                type="secondary",
-            ):
-                update_rating(selected_url, "spam")
-                _load_assessments.clear()
-                _load_spam.clear()
-                if _next_url:
-                    st.session_state["selected_url"] = _next_url
-                else:
-                    st.session_state.pop("selected_url", None)
-                st.rerun()
             if st.button(
                 "Delete listing from database",
                 key="delete_btn",
@@ -843,7 +832,7 @@ if selected_url:
 
 # Keyboard shortcuts:
 #   k / ← : previous listing      j / → : next listing
-#   1: dislike   2: like   3: superlike
+#   1: spam   2: dislike   3: like   4: superlike
 #   g i: Inbox   g s: Saved   g h: Hidden   g a: All
 # Handler is replaced on every rerun so shortcut changes take effect without a full reload.
 components.html(
@@ -949,9 +938,10 @@ components.html(
             var label = null;
             if (e.key === 'ArrowLeft'  || e.key === 'k') label = '\u2039';
             if (e.key === 'ArrowRight' || e.key === 'j') label = '\u203a';
-            if (e.key === '3') label = '🌟';
-            if (e.key === '2') label = '👍';
-            if (e.key === '1') label = '👎';
+            if (e.key === '4') label = '🌟';
+            if (e.key === '3') label = '👍';
+            if (e.key === '2') label = '👎';
+            if (e.key === '1') label = '🚫';
             if (!label) return;
             clickButton(label);
         };
