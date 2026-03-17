@@ -89,8 +89,8 @@ def save_assessment(a: Assessment) -> None:
                 (url, source, scraped_at, assessed_at, assessed_model, employer, job_title,
                  language, listing_text, job_summary, domain_fit, domain_fit_reason,
                  role_fit, role_fit_reason, gap_risk, gap_risk_reason, fit_areas, gaps,
-                 reasoning, suggestion)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 reasoning, suggestion, rating)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
             (
                 a.url,
@@ -113,6 +113,7 @@ def save_assessment(a: Assessment) -> None:
                 json.dumps([g.model_dump() for g in a.gaps]),
                 a.reasoning,
                 a.suggestion,
+                a.rating,
             ),
         )
 
@@ -223,13 +224,7 @@ def mark_url_seen(url: str) -> None:
         )
 
 
-def load_assessments() -> list[Assessment]:
-    """Return all stored assessments, newest first."""
-    with _connect() as conn:
-        rows = conn.execute(
-            "SELECT * FROM assessments ORDER BY scraped_at DESC"
-        ).fetchall()
-
+def _rows_to_assessments(rows) -> list[Assessment]:
     results = []
     for row in rows:
         d = dict(row)
@@ -251,3 +246,21 @@ def load_assessments() -> list[Assessment]:
             d.pop(key, None)
         results.append(Assessment(**d))
     return results
+
+
+def load_assessments() -> list[Assessment]:
+    """Return all non-spam assessments, newest first."""
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT * FROM assessments WHERE (rating IS NULL OR rating != 'spam') ORDER BY scraped_at DESC"
+        ).fetchall()
+    return _rows_to_assessments(rows)
+
+
+def load_spam() -> list[Assessment]:
+    """Return spam-filtered assessments, newest first."""
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT * FROM assessments WHERE rating = 'spam' ORDER BY scraped_at DESC"
+        ).fetchall()
+    return _rows_to_assessments(rows)

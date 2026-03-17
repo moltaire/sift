@@ -3,11 +3,11 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import urlparse, urlunparse
 
-from fumble.assess import assess_fit
+from fumble.assess import Assessment, assess_fit
 from fumble.email_fetch import fetch_job_urls
-from fumble.extract import extract_listing, is_listing_quick
+from fumble.extract import JobListing, extract_listing, is_listing_quick, spam_filter
+from fumble.llm import TRIAGE_MODEL
 from fumble.scrape import login_flow, scrape_job_page
-from fumble.extract import JobListing
 from fumble.store import clear_ratings, init_db, load_assessments, mark_url_seen, save_assessment, update_assessment, tracking_url_seen, url_exists
 
 PROFILE = Path("resources/profile.md").read_text()
@@ -72,10 +72,12 @@ def main():
 
     if args.reassess:
         assessments = load_assessments()
-        total = len(assessments)
-        print(f"Re-assessing {total} listing(s)...")
+        candidates = [a for a in assessments if a.rating == "new"]
+        skipped_rated = len(assessments) - len(candidates)
+        total = len(candidates)
+        print(f"Re-assessing {total} listing(s) (skipping {skipped_rated} with user ratings)...")
         ok, failed = 0, 0
-        for i, a in enumerate(assessments, 1):
+        for i, a in enumerate(candidates, 1):
             listing = JobListing(
                 is_job_listing=True,
                 employer=a.employer,
@@ -181,6 +183,37 @@ def main():
         if not listing.is_job_listing:
             print(f"  Not a job listing — skipping")
             _log_failure(canonical_url, source, "not_a_job_listing")
+            mark_url_seen(tracking_url)
+            mark_url_seen(canonical_url)
+            skip_count += 1
+            continue
+
+        print(f"  Spam check...")
+        is_spam, spam_reason = spam_filter(listing.listing_text, CRITERIA)
+        if is_spam:
+            print(f"  Spam filtered: {spam_reason}")
+            now = datetime.now(timezone.utc)
+            spam_assessment = Assessment(
+                **listing.model_dump(exclude={"is_job_listing"}),
+                job_summary=spam_reason,
+                domain_fit="low",
+                domain_fit_reason=spam_reason,
+                role_fit="low",
+                role_fit_reason="",
+                gap_risk="high",
+                gap_risk_reason="",
+                fit_areas=[],
+                gaps=[],
+                suggestion="skip",
+                reasoning=f"Spam filtered: {spam_reason}",
+                url=canonical_url,
+                source=source,
+                scraped_at=scraped_at,
+                assessed_at=now,
+                assessed_model=f"spam/{TRIAGE_MODEL}",
+                rating="spam",
+            )
+            save_assessment(spam_assessment)
             mark_url_seen(tracking_url)
             mark_url_seen(canonical_url)
             skip_count += 1

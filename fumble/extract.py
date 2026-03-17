@@ -73,3 +73,83 @@ def extract_listing(raw_text: str) -> JobListing:
     prompt = USER_PROMPT.format(raw_text=raw_text)
     content = call_llm(SYSTEM_PROMPT, prompt, JobListing.model_json_schema(), model=EXTRACT_MODEL)
     return JobListing.model_validate_json(content)
+
+
+_SPAM_SYSTEM = """You are a job listing spam filter.
+Decide if a job listing is clearly irrelevant for this candidate based on their search criteria.
+Be conservative — only flag obvious mismatches. When in doubt, return is_spam=false."""
+
+_SPAM_PROMPT = """## Candidate Search Criteria
+{criteria_text}
+
+## Job Listing
+{listing_text}
+
+---
+
+Is this listing clearly irrelevant for this candidate?
+
+Focus on what the ROLE ITSELF requires day-to-day, not the organisation's domain.
+A café waiter job at a social enterprise is still a café waiter job.
+
+Flag as spam (is_spam=true) when the role's actual tasks are clearly unrelated:
+- Internship / student / trainee position (Praktikum, Werkstudent, Auszubildender, Volontariat)
+- Role tasks are manual / physical / service work with no analytical component: trades, cooking, serving, cleaning, driving, nursing, cashier, warehouse, security
+- Role is purely clinical, legal, or administrative with no data or research component
+
+Do NOT flag as spam:
+- Roles adjacent to the candidate's target domains
+- Roles where fit is weak but plausible
+- Anything where you are uncertain
+
+reason: short phrase explaining why, e.g. "internship", "café service job", "warehouse work". Empty string if not spam."""
+
+_SPAM_CHAR_LIMIT = 2_000
+
+
+def _load_spam_keywords(criteria_text: str) -> list[str]:
+    """Parse the '## Spam keywords' section from the criteria file. Returns lowercase strings."""
+    keywords = []
+    in_section = False
+    for line in criteria_text.splitlines():
+        if line.strip().startswith("## Spam keywords"):
+            in_section = True
+            continue
+        if in_section:
+            if line.startswith("## "):
+                break
+            stripped = line.strip()
+            if stripped.startswith("#") or not stripped:
+                continue
+            # Strip leading list marker if present
+            keyword = stripped.lstrip("-").strip().lower()
+            if keyword:
+                keywords.append(keyword)
+    return keywords
+
+
+class _SpamResult(BaseModel):
+    is_spam: bool = False
+    reason: str = ""
+
+
+def spam_filter(listing_text: str, criteria_text: str) -> tuple[bool, str]:
+    """Fast spam check. Returns (is_spam, reason). Conservatively returns (False, '') on error."""
+    combined = listing_text.lower()
+    for keyword in _load_spam_keywords(criteria_text):
+        if keyword in combined:
+            return True, keyword
+
+    prompt = _SPAM_PROMPT.format(
+        criteria_text=criteria_text,
+        listing_text=listing_text[:_SPAM_CHAR_LIMIT],
+    )
+    try:
+        content = call_llm(
+            _SPAM_SYSTEM, prompt, _SpamResult.model_json_schema(),
+            model=TRIAGE_MODEL, think=False,
+        )
+        result = _SpamResult.model_validate_json(content)
+        return result.is_spam, result.reason
+    except Exception:
+        return False, ""
