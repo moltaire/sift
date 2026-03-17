@@ -26,7 +26,7 @@ Assess this job listing against the profile and criteria above.
 **job_summary** (required): one sentence — what the role is, at what kind of organisation, and the main focus. Plain text, no jargon.
 
 **For each dimension, provide a rating and a one-sentence reason:**
-- domain_fit (high/medium/low): match between job domain and the candidate's target domains. high = primary target domain. medium = adjacent or acceptable. low = unrelated.
+- domain_fit (high/medium/low): match between job domain and the candidate's target domains. high = clearly within target domains. medium = adjacent or acceptable. low = unrelated.
 - domain_fit_reason: one sentence. Skip the subject — start directly with the key fact.
 - role_fit (high/medium/low): match between role type and the candidate's target roles. high = strong match. medium = partial match. low = does not match.
 - role_fit_reason: one sentence. Skip the subject — start directly with the key fact.
