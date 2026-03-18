@@ -199,7 +199,7 @@ def update_assessment(a: Assessment) -> None:
 
 
 def update_rating(url: str, rating: str) -> None:
-    """Update the user rating (new | liked | disliked) for an assessment."""
+    """Update the user rating (new | liked | disliked | superliked | applied | spam) for an assessment."""
     with _connect() as conn:
         conn.execute(
             "UPDATE assessments SET rating = ? WHERE url = ?",

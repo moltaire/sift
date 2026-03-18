@@ -90,10 +90,12 @@ RATING_ICON = {
     "liked": "👍",
     "disliked": "👎",
     "spam": "🚫",
+    "applied": "📮",
 }
 
 SUGGESTION_LABELS = {
-    f"{SUGGESTION_ICON[v]} {v.title()}": v for v in ["apply", "consider", "skip", "spam"]
+    f"{SUGGESTION_ICON[v]} {v.title()}": v
+    for v in ["apply", "consider", "skip", "spam"]
 }
 FIT_LABELS = {f"{FIT_ICON[v]} {v}": v for v in ["high", "medium", "low"]}
 GAP_LABELS = {
@@ -107,14 +109,16 @@ _GAP_VAL_TO_LABEL = {v: k for k, v in GAP_LABELS.items()}
 VIEWS = {
     "📬 Inbox": ["new"],
     "⭐ Saved": ["superliked", "liked"],
+    "📮 Applied": ["applied"],
     "👎 Hidden": ["disliked"],
-    "✨ All": ["new", "superliked", "liked", "disliked"],
+    "✨ All": ["new", "superliked", "liked", "applied", "disliked"],
     "🚫 Spam": ["spam"],
 }
 _DEFAULT_VIEW = "📬 Inbox"
 _VIEW_SLUG = {
     "📬 Inbox": "inbox",
     "⭐ Saved": "saved",
+    "📮 Applied": "applied",
     "👎 Hidden": "hidden",
     "✨ All": "all",
     "🚫 Spam": "spam",
@@ -770,6 +774,22 @@ if selected_url:
                 st.caption(row.get("job_summary") or "No reason recorded.")
                 st.caption("Restore to inbox to run full assessment.")
             else:
+                _applied_label = (
+                    "📮 Mark as applied"
+                    if _current_rating != "applied"
+                    else "Move back to Saved"
+                )
+                if st.button(
+                    _applied_label,
+                    key="applied_btn",
+                    type="secondary",
+                    use_container_width=True,
+                ):
+                    new_r = "liked" if _current_rating == "applied" else "applied"
+                    update_rating(selected_url, new_r)
+                    _load_assessments.clear()
+                    _load_spam.clear()
+                    st.rerun()
                 st.markdown(
                     "### {} Suggestion: {}".format(
                         SUGGESTION_ICON.get(row["suggestion"], ""),
@@ -833,7 +853,7 @@ if selected_url:
 # Keyboard shortcuts:
 #   k / ← : previous listing      j / → : next listing
 #   1: spam   2: dislike   3: like   4: superlike
-#   g i: Inbox   g s: Saved   g h: Hidden   g a: All
+#   g i: Inbox   g s: Saved   g p: Applied   g h: Hidden   g a: All
 # Handler is replaced on every rerun so shortcut changes take effect without a full reload.
 components.html(
     """
@@ -918,10 +938,11 @@ components.html(
             if (_gPending) {
                 clearTimeout(_gTimer);
                 _gPending = false;
-                if (e.key === 'i') { clickView('inbox'); e.preventDefault(); return; }
-                if (e.key === 's') { clickView('saved'); e.preventDefault(); return; }
-                if (e.key === 'h') { clickView('hidden'); e.preventDefault(); return; }
-                if (e.key === 'a') { clickView('all');   e.preventDefault(); return; }
+                if (e.key === 'i') { clickView('inbox');   e.preventDefault(); return; }
+                if (e.key === 's') { clickView('saved');   e.preventDefault(); return; }
+                if (e.key === 'p') { clickView('applied'); e.preventDefault(); return; }
+                if (e.key === 'h') { clickView('hidden');  e.preventDefault(); return; }
+                if (e.key === 'a') { clickView('all');     e.preventDefault(); return; }
                 // unrecognised second key — fall through to normal handling
             }
 
