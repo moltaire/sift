@@ -51,9 +51,9 @@ IMAP_HOST=imap.example.com
 IMAP_EMAIL=you@example.com
 IMAP_PASSWORD=yourpassword
 
-# LLM — defaults to Ollama with llama3.1:8b
-LLM_PROVIDER=ollama        # ollama | openai | anthropic
-LLM_MODEL=qwen3.5:9b
+# LLM — see "LLM configuration" below for all options
+# Defaults: ollama/qwen3.5:9b for extraction and assessment, ollama/llama3.2 for triage
+# No LLM config needed if you're happy with the defaults and have Ollama running locally.
 ```
 
 Edit `resources/sources.toml` to configure which email folders to scan and what URL patterns to extract. Each source maps an IMAP folder to a regex pattern matched against URLs found in emails. Currently configured sources:
@@ -129,17 +129,53 @@ The dashboard lets you:
 | `/` | Focus search bar |
 | `Esc` | Blur search bar |
 
-## LLM providers
+## LLM configuration
 
-Fumble supports Ollama (local), OpenAI, and Anthropic via the `LLM_PROVIDER` and `LLM_MODEL` env vars. Only the SDK for the active provider needs to be installed.
+Fumble supports Ollama (local), OpenAI, and Anthropic. The pipeline has three LLM roles with independent provider and model settings:
 
-| Provider | Example model | Notes |
+| Role | What it does | Default provider | Default model |
+|---|---|---|---|
+| **Extract** | Cleans raw page text into a structured listing | `ollama` | `qwen3.5:9b` |
+| **Triage** | Fast binary check: is this actually a job listing? | `ollama` | `llama3.2` |
+| **Assess** | Scores fit against your profile and criteria | `ollama` | `qwen3.5:9b` |
+
+Each role reads from its own env vars, all of which are optional and fall back to the base `LLM_PROVIDER` / `LLM_MODEL`:
+
+```
+# Base — applies to all roles unless overridden
+LLM_PROVIDER=ollama          # ollama | openai | anthropic
+LLM_MODEL=qwen3.5:9b
+
+# Per-role overrides (all optional)
+LLM_EXTRACT_PROVIDER=ollama
+LLM_EXTRACT_MODEL=qwen3.5:9b
+
+LLM_TRIAGE_PROVIDER=ollama
+LLM_TRIAGE_MODEL=llama3.2
+
+LLM_ASSESS_PROVIDER=anthropic
+LLM_ASSESS_MODEL=claude-haiku-4-5-20251001
+```
+
+Only the SDK for each active provider needs to be installed. API keys go in `.env`:
+
+| Provider | Key variable | Notes |
 |---|---|---|
-| `ollama` | `qwen3.5:9b` | Default. Runs locally, no API cost. |
-| `openai` | `gpt-4o` | Requires `OPENAI_API_KEY` |
-| `anthropic` | `claude-opus-4-6` | Requires `ANTHROPIC_API_KEY` |
+| `ollama` | — | Runs locally, no API cost |
+| `openai` | `OPENAI_API_KEY` | |
+| `anthropic` | `ANTHROPIC_API_KEY` | Supports prompt caching — stable context (profile, criteria) is cached across a batch run, reducing input token cost by ~80% after the first call |
 
-Currently only tested on a M4 Pro 24GB MacBook Pro with Ollama using `qwen3.5:9b`. `llama3.2` is much faster, but noticably inferior in results for both scraping and assessment. 
+**Example: local extraction, Claude for assessment**
+
+```
+LLM_ASSESS_PROVIDER=anthropic
+LLM_ASSESS_MODEL=claude-haiku-4-5-20251001
+ANTHROPIC_API_KEY=sk-ant-...
+```
+
+Everything else defaults to local Ollama. At ~$0.01 per listing, 100 listings costs roughly $1.
+
+Currently only tested on an M4 Pro 24GB MacBook Pro. `llama3.2` is much faster for triage but noticeably weaker for extraction and assessment.
 
 ## Project structure
 

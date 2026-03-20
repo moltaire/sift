@@ -23,3 +23,9 @@ folder = "Job Search/Climatebase"
 name = "climatebase"
 display = "Climatebase"
 url_pattern = "ct\\.sendgrid\\.net/ls/click"
+
+[[sources]]
+folder = "Job Search/Academics"
+name = "academics"
+display = "Academics"
+url_pattern = "academics.de/lnk"

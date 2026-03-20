@@ -8,22 +8,30 @@ from dotenv import load_dotenv
 load_dotenv()
 
 PROVIDER = os.getenv("LLM_PROVIDER", "ollama")
-MODEL = os.getenv("LLM_MODEL", "llama3.1:8b")
+MODEL = os.getenv("LLM_MODEL", "qwen3.5:9b")
+
+EXTRACT_PROVIDER = os.getenv("LLM_EXTRACT_PROVIDER", PROVIDER)
 EXTRACT_MODEL = os.getenv("LLM_EXTRACT_MODEL", MODEL)
+
+TRIAGE_PROVIDER = os.getenv("LLM_TRIAGE_PROVIDER", PROVIDER)
 TRIAGE_MODEL = os.getenv("LLM_TRIAGE_MODEL", "llama3.2")
+
+ASSESS_PROVIDER = os.getenv("LLM_ASSESS_PROVIDER", PROVIDER)
+ASSESS_MODEL = os.getenv("LLM_ASSESS_MODEL", MODEL)
 DEBUG = os.getenv("DEBUG_LLM", "").strip() == "1"
 
 
-def call_llm(system: str, prompt: str, schema: dict, temperature: float | None = None, think: bool = True, model: str | None = None) -> str:
+def call_llm(system: str, prompt: str, schema: dict, temperature: float | None = None, think: bool = True, model: str | None = None, provider: str | None = None, cached_prefix: str | None = None) -> str:
     """Call the configured LLM provider and return raw JSON string matching schema."""
-    if PROVIDER == "ollama":
-        return _call_ollama(system, prompt, schema, temperature, think, model or MODEL)
-    elif PROVIDER == "openai":
-        return _call_openai(system, prompt, schema, temperature)
-    elif PROVIDER == "anthropic":
-        return _call_anthropic(system, prompt, schema, temperature)
+    p = provider or PROVIDER
+    if p == "ollama":
+        return _call_ollama(system, prompt, schema, temperature, think, model or EXTRACT_MODEL)
+    elif p == "openai":
+        return _call_openai(system, prompt, schema, temperature, model or EXTRACT_MODEL)
+    elif p == "anthropic":
+        return _call_anthropic(system, prompt, schema, temperature, model or ASSESS_MODEL, cached_prefix=cached_prefix)
     else:
-        raise ValueError(f"Unknown LLM_PROVIDER: {PROVIDER!r}")
+        raise ValueError(f"Unknown LLM_PROVIDER: {p!r}")
 
 
 def _call_ollama(system: str, prompt: str, schema: dict, temperature: float | None, think: bool, model: str) -> str:
@@ -56,12 +64,12 @@ def _call_ollama(system: str, prompt: str, schema: dict, temperature: float | No
     return content
 
 
-def _call_openai(system: str, prompt: str, schema: dict, temperature: float) -> str:
+def _call_openai(system: str, prompt: str, schema: dict, temperature: float | None, model: str) -> str:
     from openai import OpenAI
 
     client = OpenAI()
     response = client.chat.completions.create(
-        model=MODEL,
+        model=model,
         messages=[
             {"role": "system", "content": system},
             {"role": "user", "content": prompt},
@@ -75,18 +83,26 @@ def _call_openai(system: str, prompt: str, schema: dict, temperature: float) -> 
     return content
 
 
-def _call_anthropic(system: str, prompt: str, schema: dict, temperature: float) -> str:
+def _call_anthropic(system: str, prompt: str, schema: dict, temperature: float | None, model: str, cached_prefix: str | None = None) -> str:
     import anthropic
 
     client = anthropic.Anthropic()
-    response = client.messages.create(
-        model=MODEL,
+    if cached_prefix:
+        user_content = [
+            {"type": "text", "text": cached_prefix, "cache_control": {"type": "ephemeral"}},
+            {"type": "text", "text": prompt},
+        ]
+    else:
+        user_content = prompt
+    kwargs = dict(
+        model=model,
         max_tokens=4096,
-        system=system
-        + "\n\nRespond with a valid JSON object only. No prose, no markdown code fences.",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=temperature,
+        system=[{"type": "text", "text": system + f"\n\nRespond with a valid JSON object only. No prose, no markdown code fences.\n\nJSON schema:\n{json.dumps(schema)}", "cache_control": {"type": "ephemeral"}}],
+        messages=[{"role": "user", "content": user_content}],
     )
+    if temperature is not None:
+        kwargs["temperature"] = temperature
+    response = client.messages.create(**kwargs)
     content = response.content[0].text
     if not content:
         raise ValueError("LLM returned empty response")

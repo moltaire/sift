@@ -4,54 +4,75 @@ from typing import Literal
 from pydantic import BaseModel
 
 from fumble.extract import JobListing
-from fumble.llm import MODEL, PROVIDER, call_llm
+from fumble.llm import ASSESS_MODEL, ASSESS_PROVIDER, call_llm
 
-SYSTEM_PROMPT = """You are a precise job screening assistant.
-Assess how well a job listing matches a candidate's profile and search criteria.
-Be concise and direct. Reach one firm conclusion per dimension — do not hedge, restart, or revisit decisions."""
+SYSTEM_PROMPT = """You are a job screening assistant. 
+Assess how well a job listing matches a candidate profile and search criteria.
+Be direct. Give one firm answer per field. Do not hedge.
 
-USER_PROMPT = """## Candidate Profile
+Priority order when making your assessment:
+1. Role fit — does the day-to-day work match the target role types?
+2. Gap risk — are there gaps severe enough to cause rejection?
+3. Domain fit — is the employer domain relevant? This is least important.
+
+A good domain match never compensates for poor role fit or high gap risk."""
+
+CONTEXT_PROMPT = """## Candidate Profile
 {profile_text}
 
 ## Search Criteria
-{criteria_text}
+{criteria_text}"""
 
-## Job Listing
+LISTING_PROMPT = """## Job Listing
 {listing_text}
 
 ---
 
-Assess this job listing against the profile and criteria above.
+Assess this job listing. Fill in every field below.
 
-**job_summary** (required): one sentence — what the role is, at what kind of organisation, and the main focus. Plain text, no jargon.
+**job_summary**: One sentence. What is the role, at what kind of organisation, and what is the main focus.
 
-**For each dimension, provide a rating and a one-sentence reason:**
-- domain_fit (high/medium/low): match between job domain and the candidate's target domains. high = clearly within target domains. medium = adjacent or acceptable. low = unrelated.
-- domain_fit_reason: one sentence. Skip the subject — start directly with the key fact.
-- role_fit (high/medium/low): match between role type and the candidate's target roles. high = strong match. medium = partial match. low = does not match.
-- role_fit_reason: one sentence. Skip the subject — start directly with the key fact.
-- gap_risk (high/medium/low): risk of being screened out due to profile gaps. high = clearly lacks required experience. medium = some requirements are a stretch. low = plausible fit.
-- gap_risk_reason: one sentence. Skip the subject — start directly with the key fact.
+**role_check**: yes or no. Does the primary day-to-day function of this role match the candidate's target role types?
+If no, set suggestion to spam and skip the remaining dimensions.
 
-**fit_areas**: list of 2-4 short phrases identifying where the candidate matches well.
+**role_fit**: high / medium / low
+- high: primary function is a target role type
+- medium: partial match, or a secondary target role type
+- low: outside target role types
 
-**gaps**: list of gaps between the role requirements and the candidate profile. For each gap:
-- description: one short phrase naming the gap.
-- severity: minor (easily addressed or not critical) / manageable (real gap but not disqualifying) / severe (likely dealbreaker).
+**role_fit_reason**: One sentence. Start with the key fact, not the subject.
 
-**Before choosing a suggestion, answer this question first:**
-Does this role's primary day-to-day function fall within the candidate's target role types (as listed in the Search Criteria above)?
-- If NO → suggestion must be spam. The organisation's domain is irrelevant — the role itself must match.
-- If YES → continue to apply / consider / skip below.
+**gap_risk**: high / medium / low
+Severity rules:
+- severe gap: role explicitly requires years of industry/business experience the candidate lacks; mandatory technical skills entirely absent from profile; required certifications or licences not held
+- manageable gap: preferred (not required) skills missing; industry context that could map from research; learnable tools
+- minor gap: nice-to-haves, soft skills, domain familiarity without depth requirement
+Rating rules:
+- high: at least one severe gap present — do not average, one severe gap is enough
+- medium: gaps are manageable but real
+- low: no severe gaps, plausible fit overall
+
+**gap_risk_reason**: One sentence. Name the most severe gap. Start with the key fact.
+
+**domain_fit**: high / medium / low
+- high: employer domain is in the candidate's priority domains
+- medium: adjacent or acceptable domain
+- low: unrelated domain
+Note: domain_fit does not change the suggestion unless role_fit and gap_risk are equal.
+
+**domain_fit_reason**: One sentence. Start with the key fact.
+
+**fit_areas**: 2 to 4 short phrases where the candidate matches well.
+
+**gaps**: List each gap with a description and severity (minor / manageable / severe).
 
 **suggestion**: apply / consider / skip / spam
-- spam: role's primary tasks are outside the candidate's target role types entirely — wrong profession, regardless of employer
-- apply: strong role and domain match — worth applying
-- consider: role type is correct, partial fit — worth reviewing
-- skip: role type is broadly correct but fit is too weak to pursue
+- spam: role_check was no
+- apply: high role_fit and low or medium gap_risk
+- consider: medium role_fit with low gap_risk, or high role_fit with medium gap_risk
+- skip: role type matches but gap_risk is high, or fit is too weak overall
 
-**reasoning**: 2 sentences maximum. Lead with the decisive factor, then the trade-off or caveat if any. Plain text, no bullet points.
-"""
+**reasoning**: One sentence. State the decisive factor and the main caveat, separated by a semicolon. Use plain language — no field names or technical labels. No bullet points."""
 
 
 class Gap(BaseModel):
@@ -63,14 +84,15 @@ class FitResult(BaseModel):
     """What the LLM produces — purely analytical fields."""
 
     job_summary: str
-    domain_fit: Literal["high", "medium", "low"]
-    domain_fit_reason: str
+    role_check: bool
     role_fit: Literal["high", "medium", "low"]
     role_fit_reason: str
     gap_risk: Literal["high", "medium", "low"]
     gap_risk_reason: str
-    fit_areas: list[str]
+    domain_fit: Literal["high", "medium", "low"]
+    domain_fit_reason: str
     gaps: list[Gap]
+    fit_areas: list[str]
     suggestion: Literal["apply", "consider", "skip", "spam"]
     reasoning: str
 
@@ -95,13 +117,10 @@ def assess_fit(
     source: str = "",
     scraped_at: datetime | None = None,
 ) -> Assessment:
-    prompt = USER_PROMPT.format(
-        profile_text=profile_text,
-        criteria_text=criteria_text,
-        listing_text=listing.listing_text or "[No listing text extracted]",
-    )
+    cached_prefix = CONTEXT_PROMPT.format(profile_text=profile_text, criteria_text=criteria_text)
+    prompt = LISTING_PROMPT.format(listing_text=listing.listing_text or "[No listing text extracted]")
 
-    content = call_llm(SYSTEM_PROMPT, prompt, FitResult.model_json_schema())
+    content = call_llm(SYSTEM_PROMPT, prompt, FitResult.model_json_schema(), provider=ASSESS_PROVIDER, model=ASSESS_MODEL, cached_prefix=cached_prefix)
     fit = FitResult.model_validate_json(content)
 
     now = datetime.now(timezone.utc)
@@ -112,5 +131,5 @@ def assess_fit(
         source=source,
         scraped_at=scraped_at or now,
         assessed_at=now,
-        assessed_model=f"{PROVIDER}/{MODEL}",
+        assessed_model=f"{ASSESS_PROVIDER}/{ASSESS_MODEL}",
     )

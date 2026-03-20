@@ -9,6 +9,7 @@ description = "Dating-app-style job listing screener"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "anthropic>=0.86.0",
     "curl-cffi>=0.14.0",
     "imapclient>=3.1.0",
     "ollama>=0.4",

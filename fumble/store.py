@@ -62,6 +62,7 @@ def init_db() -> None:
             "rating TEXT DEFAULT 'new'",
             "assessed_at TEXT",
             "assessed_model TEXT DEFAULT ''",
+            "role_check INTEGER DEFAULT 1",
         ]:
             try:
                 conn.execute(f"ALTER TABLE assessments ADD COLUMN {col}")
@@ -106,10 +107,10 @@ def save_assessment(a: Assessment) -> None:
             """
             INSERT OR IGNORE INTO assessments
                 (url, source, scraped_at, assessed_at, assessed_model, employer, job_title,
-                 language, listing_text, job_summary, domain_fit, domain_fit_reason,
+                 language, listing_text, job_summary, role_check, domain_fit, domain_fit_reason,
                  role_fit, role_fit_reason, gap_risk, gap_risk_reason, fit_areas, gaps,
                  reasoning, suggestion, rating)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
             (
                 a.url,
@@ -122,6 +123,7 @@ def save_assessment(a: Assessment) -> None:
                 a.language,
                 a.listing_text,
                 a.job_summary,
+                int(a.role_check),
                 a.domain_fit,
                 a.domain_fit_reason,
                 a.role_fit,
@@ -151,6 +153,7 @@ def update_assessment(a: Assessment) -> None:
         a.language,
         a.listing_text,
         a.job_summary,
+        int(a.role_check),
         a.domain_fit,
         a.domain_fit_reason,
         a.role_fit,
@@ -167,10 +170,10 @@ def update_assessment(a: Assessment) -> None:
             """
             INSERT INTO assessments
                 (url, source, scraped_at, assessed_at, assessed_model, employer, job_title,
-                 language, listing_text, job_summary, domain_fit, domain_fit_reason,
+                 language, listing_text, job_summary, role_check, domain_fit, domain_fit_reason,
                  role_fit, role_fit_reason, gap_risk, gap_risk_reason, fit_areas, gaps,
                  reasoning, suggestion)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(url) DO UPDATE SET
                 source          = excluded.source,
                 scraped_at      = excluded.scraped_at,
@@ -181,6 +184,7 @@ def update_assessment(a: Assessment) -> None:
                 language        = excluded.language,
                 listing_text    = excluded.listing_text,
                 job_summary     = excluded.job_summary,
+                role_check      = excluded.role_check,
                 domain_fit      = excluded.domain_fit,
                 domain_fit_reason = excluded.domain_fit_reason,
                 role_fit        = excluded.role_fit,
@@ -260,6 +264,7 @@ def _rows_to_assessments(rows) -> list[Assessment]:
         d["fit_areas"] = json.loads(d.get("fit_areas") or "[]")
         d["gaps"] = json.loads(d.get("gaps") or "[]")
         d["rating"] = d.get("rating") or "new"
+        d["role_check"] = bool(d.get("role_check", 1))
         # Drop legacy columns that may still exist in older databases
         for key in ("status", "hidden", "bookmarked", "stars", "summary"):
             d.pop(key, None)

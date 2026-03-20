@@ -2,7 +2,7 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-from fumble.llm import EXTRACT_MODEL, PROVIDER, TRIAGE_MODEL, call_llm
+from fumble.llm import EXTRACT_MODEL, EXTRACT_PROVIDER, TRIAGE_MODEL, TRIAGE_PROVIDER, call_llm
 
 SYSTEM_PROMPT = """You are a precise text extraction assistant.
 Your first job is to determine whether the input actually contains a job listing.
@@ -59,11 +59,11 @@ class _TriageResult(BaseModel):
 def is_listing_quick(text: str) -> bool:
     """Fast binary check using a small model. Returns False only when confident it's not a listing.
     Always returns True for non-Ollama providers (API models are already fast)."""
-    if PROVIDER != "ollama":
+    if TRIAGE_PROVIDER != "ollama":
         return True
     prompt = _TRIAGE_PROMPT.format(text=text[:_TRIAGE_CHAR_LIMIT])
     try:
-        content = call_llm(_TRIAGE_SYSTEM, prompt, _TriageResult.model_json_schema(), model=TRIAGE_MODEL, think=False)
+        content = call_llm(_TRIAGE_SYSTEM, prompt, _TriageResult.model_json_schema(), model=TRIAGE_MODEL, provider=TRIAGE_PROVIDER, think=False)
         return _TriageResult.model_validate_json(content).is_job_listing
     except Exception:
         return True  # safe default: never filter on error
@@ -71,7 +71,7 @@ def is_listing_quick(text: str) -> bool:
 
 def extract_listing(raw_text: str) -> JobListing:
     prompt = USER_PROMPT.format(raw_text=raw_text)
-    content = call_llm(SYSTEM_PROMPT, prompt, JobListing.model_json_schema(), model=EXTRACT_MODEL)
+    content = call_llm(SYSTEM_PROMPT, prompt, JobListing.model_json_schema(), model=EXTRACT_MODEL, provider=EXTRACT_PROVIDER)
     return JobListing.model_validate_json(content)
 
 
@@ -143,7 +143,7 @@ def llm_spam_check(listing_text: str, criteria_text: str) -> tuple[bool, str]:
     try:
         content = call_llm(
             _SPAM_SYSTEM, prompt, _SpamResult.model_json_schema(),
-            model=TRIAGE_MODEL, think=False,
+            model=TRIAGE_MODEL, provider=TRIAGE_PROVIDER, think=False,
         )
         result = _SpamResult.model_validate_json(content)
         return result.is_spam, result.reason
