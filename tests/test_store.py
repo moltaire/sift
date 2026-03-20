@@ -21,6 +21,7 @@ def _make_assessment(**overrides) -> Assessment:
         language="EN",
         listing_text="We are looking for a software engineer...",
         job_summary="Backend role at a mid-sized SaaS company.",
+        role_check=True,
         domain_fit="high",
         domain_fit_reason="Matches target domain exactly.",
         role_fit="medium",

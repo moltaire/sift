@@ -1,15 +1,11 @@
-"""Tests for pure utility functions in main.py."""
-import sys
+"""Tests for pure utility functions in fumble/cli.py."""
 import unittest.mock as mock
-from pathlib import Path
 
 import pytest
 
-# main.py lives at the project root and reads resource files at import time.
-# Stub those reads so the tests work without profile.md / search-criteria.md.
+# cli.py reads resource files at import time — stub those reads.
 with mock.patch("pathlib.Path.read_text", return_value="stub content"):
-    sys.path.insert(0, str(Path(__file__).parent.parent))
-    import main
+    import fumble.cli as main
 
 
 # ---------------------------------------------------------------------------
