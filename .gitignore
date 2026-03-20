@@ -12,9 +12,10 @@ wheels/
 # Credentials
 .env
 
-# Personal profile and search criteria — keep local, commit only the *.example.md templates
+# Personal profile, search criteria, and version history — keep local, commit only the *.example.md templates
 resources/profile.md
 resources/search-criteria.md
+resources/versions/
 
 # Runtime data
 data/
