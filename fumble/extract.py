@@ -87,16 +87,18 @@ _SPAM_PROMPT = """## Candidate Search Criteria
 
 ---
 
-Is this listing clearly irrelevant for this candidate based on their search criteria?
+Does the day-to-day work of this role clearly fall outside ALL of the candidate's target role types described above?
 
-Focus on what the ROLE ITSELF requires day-to-day, not the organisation's domain.
+Only flag as spam (is_spam=true) when you are confident it is a clear role-type mismatch — for example, a purely sales, legal, operations, or administrative role when the candidate targets technical or product roles, or vice versa.
 
-Flag as spam (is_spam=true) only when the role clearly falls outside all of the candidate's target role types as defined in the Search Criteria above.
-When in doubt, do not flag as spam.
+Do NOT flag as spam if:
+- The role type could be a match but the domain, seniority, or location seems off
+- The listing is ambiguous or the role type is unclear
+- The mismatch is in industry or domain, not the role type itself
 
-reason: short phrase explaining why. Empty string if not spam."""
+reason: one short phrase stating the mismatched role type. Empty string if not spam."""
 
-_SPAM_CHAR_LIMIT = 2_000
+_SPAM_CHAR_LIMIT = 3_000
 
 
 def _load_spam_keywords(criteria_text: str) -> list[str]:
@@ -126,11 +128,11 @@ class _SpamResult(BaseModel):
 
 def keyword_spam_check(job_title: str, criteria_text: str) -> tuple[bool, str]:
     """Keyword-only spam pre-filter. Matches against job title only.
-    Returns (is_spam, matched_keyword)."""
+    Returns (is_spam, reason)."""
     title = job_title.lower()
     for keyword in _load_spam_keywords(criteria_text):
         if keyword in title:
-            return True, keyword
+            return True, f"Job title contained '{keyword}'."
     return False, ""
 
 
@@ -151,9 +153,11 @@ def llm_spam_check(listing_text: str, criteria_text: str) -> tuple[bool, str]:
         return False, ""
 
 
-def spam_filter(job_title: str, listing_text: str, criteria_text: str) -> tuple[bool, str]:
-    """Fast spam check (keywords then LLM). Returns (is_spam, reason)."""
+def spam_filter(job_title: str, listing_text: str, criteria_text: str) -> tuple[bool, str, str]:
+    """Fast spam check (keywords then LLM). Returns (is_spam, reason, stage).
+    stage is 'keyword_spam' or 'llm_spam'."""
     is_spam, reason = keyword_spam_check(job_title, criteria_text)
     if is_spam:
-        return True, reason
-    return llm_spam_check(listing_text, criteria_text)
+        return True, reason, "keyword_spam"
+    is_spam, reason = llm_spam_check(listing_text, criteria_text)
+    return is_spam, reason, "llm_spam"

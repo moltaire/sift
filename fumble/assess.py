@@ -107,6 +107,7 @@ class Assessment(JobListing, FitResult):
     assessed_at: datetime
     assessed_model: str = ""
     rating: str = "new"  # new | liked | disliked
+    pipeline_stage: str = "assessed"  # keyword_spam | llm_spam | assessed
 
 
 def assess_fit(

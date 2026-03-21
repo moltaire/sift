@@ -776,12 +776,10 @@ if selected_url:
             if view == "🚫 Spam":
                 st.markdown("### 🚫 Spam filtered")
                 _is_early_spam = not row.get("role_fit_reason")
-                _spam_summary = row.get("job_summary") or ""
+                _spam_reason = row.get("reasoning") or ""
+                st.caption(_spam_reason or "No reason recorded.")
                 if _is_early_spam:
-                    st.caption(f"Marked as spam due to: {_spam_summary}" if _spam_summary else "No reason recorded.")
                     st.caption("Restore to inbox to run full assessment.")
-                else:
-                    st.caption(_spam_summary or "No reason recorded.")
                 if row.get("role_fit_reason"):
                     with st.expander("Show evaluation details", expanded=False):
                         st.markdown(

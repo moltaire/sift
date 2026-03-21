@@ -245,3 +245,34 @@ def test_load_assessments_newest_first():
     results = store.load_assessments()
     assert results[0].url == "https://example.com/new"
     assert results[1].url == "https://example.com/old"
+
+
+# ---------------------------------------------------------------------------
+# pipeline_stage
+# ---------------------------------------------------------------------------
+
+def test_pipeline_stage_default_is_assessed():
+    import fumble.store as store
+    a = _make_assessment()
+    store.save_assessment(a)
+    assert store.load_assessments()[0].pipeline_stage == "assessed"
+
+
+def test_pipeline_stage_roundtrips():
+    import fumble.store as store
+    for stage in ("keyword_spam", "llm_spam", "assessed"):
+        url = f"https://example.com/{stage}"
+        store.save_assessment(_make_assessment(url=url, pipeline_stage=stage, rating="new" if stage == "assessed" else "spam"))
+    results = store.load_assessments() + store.load_spam()
+    stages = {r.url.split("/")[-1]: r.pipeline_stage for r in results}
+    assert stages["assessed"] == "assessed"
+    assert stages["keyword_spam"] == "keyword_spam"
+    assert stages["llm_spam"] == "llm_spam"
+
+
+def test_update_assessment_updates_pipeline_stage():
+    import fumble.store as store
+    a = _make_assessment(pipeline_stage="llm_spam")
+    store.save_assessment(a)
+    store.update_assessment(_make_assessment(pipeline_stage="assessed"))
+    assert store.load_assessments()[0].pipeline_stage == "assessed"

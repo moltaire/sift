@@ -195,18 +195,18 @@ def main():
             continue
 
         print(f"  Spam check...")
-        is_spam, spam_reason = spam_filter(listing.job_title, listing.listing_text, CRITERIA)
+        is_spam, spam_reason, spam_stage = spam_filter(listing.job_title, listing.listing_text, CRITERIA)
         spam_model = f"spam/{TRIAGE_MODEL}"
 
         if is_spam:
-            print(f"  Spam filtered: {spam_reason}")
+            print(f"  Spam filtered ({spam_stage}): {spam_reason}")
             now = datetime.now(timezone.utc)
             spam_assessment = Assessment(
                 **listing.model_dump(exclude={"is_job_listing"}),
-                job_summary=spam_reason,
+                job_summary="",
                 role_check=True,
                 domain_fit="low",
-                domain_fit_reason=spam_reason,
+                domain_fit_reason="",
                 role_fit="low",
                 role_fit_reason="",
                 gap_risk="high",
@@ -214,13 +214,14 @@ def main():
                 fit_areas=[],
                 gaps=[],
                 suggestion="skip",
-                reasoning=f"Spam filtered: {spam_reason}",
+                reasoning=spam_reason,
                 url=canonical_url,
                 source=source,
                 scraped_at=scraped_at,
                 assessed_at=now,
                 assessed_model=spam_model,
                 rating="spam",
+                pipeline_stage=spam_stage,
             )
             save_assessment(spam_assessment)
             mark_url_seen(tracking_url)

@@ -63,11 +63,22 @@ def init_db() -> None:
             "assessed_at TEXT",
             "assessed_model TEXT DEFAULT ''",
             "role_check INTEGER DEFAULT 1",
+            "pipeline_stage TEXT DEFAULT 'assessed'",
         ]:
             try:
                 conn.execute(f"ALTER TABLE assessments ADD COLUMN {col}")
             except sqlite3.OperationalError:
                 pass
+
+        # Backfill pipeline_stage for rows created before this column existed.
+        # Old spam rows (assessed_model LIKE 'spam/%') can't be distinguished as
+        # keyword_spam vs llm_spam, so they get 'llm_spam' as a conservative guess.
+        conn.execute(
+            "UPDATE assessments SET pipeline_stage = 'llm_spam' WHERE pipeline_stage IS NULL AND assessed_model LIKE 'spam/%'"
+        )
+        conn.execute(
+            "UPDATE assessments SET pipeline_stage = 'assessed' WHERE pipeline_stage IS NULL"
+        )
 
         conn.execute(
             """
@@ -109,8 +120,8 @@ def save_assessment(a: Assessment) -> None:
                 (url, source, scraped_at, assessed_at, assessed_model, employer, job_title,
                  language, listing_text, job_summary, role_check, domain_fit, domain_fit_reason,
                  role_fit, role_fit_reason, gap_risk, gap_risk_reason, fit_areas, gaps,
-                 reasoning, suggestion, rating)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 reasoning, suggestion, rating, pipeline_stage)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
             (
                 a.url,
@@ -135,6 +146,7 @@ def save_assessment(a: Assessment) -> None:
                 a.reasoning,
                 a.suggestion,
                 a.rating,
+                a.pipeline_stage,
             ),
         )
 
@@ -164,6 +176,7 @@ def update_assessment(a: Assessment) -> None:
         json.dumps([g.model_dump() for g in a.gaps]),
         a.reasoning,
         a.suggestion,
+        a.pipeline_stage,
     )
     with _connect() as conn:
         cur = conn.execute(
@@ -172,8 +185,8 @@ def update_assessment(a: Assessment) -> None:
                 (url, source, scraped_at, assessed_at, assessed_model, employer, job_title,
                  language, listing_text, job_summary, role_check, domain_fit, domain_fit_reason,
                  role_fit, role_fit_reason, gap_risk, gap_risk_reason, fit_areas, gaps,
-                 reasoning, suggestion)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 reasoning, suggestion, pipeline_stage)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(url) DO UPDATE SET
                 source          = excluded.source,
                 scraped_at      = excluded.scraped_at,
@@ -194,7 +207,8 @@ def update_assessment(a: Assessment) -> None:
                 fit_areas       = excluded.fit_areas,
                 gaps            = excluded.gaps,
                 reasoning       = excluded.reasoning,
-                suggestion      = excluded.suggestion
+                suggestion      = excluded.suggestion,
+                pipeline_stage  = excluded.pipeline_stage
         """,
             params,
         )
@@ -265,6 +279,7 @@ def _rows_to_assessments(rows) -> list[Assessment]:
         d["gaps"] = json.loads(d.get("gaps") or "[]")
         d["rating"] = d.get("rating") or "new"
         d["role_check"] = bool(d.get("role_check", 1))
+        d["pipeline_stage"] = d.get("pipeline_stage") or "assessed"
         # Drop legacy columns that may still exist in older databases
         for key in ("status", "hidden", "bookmarked", "stars", "summary"):
             d.pop(key, None)
