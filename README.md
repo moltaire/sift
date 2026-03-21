@@ -9,9 +9,10 @@ A job screening tool that makes job ad discovery just as fun (shrug) as Tinder. 
 1. **Fetch** — connects to your IMAP mailbox and extracts job URLs from configured email folders (StepStone, LinkedIn, etc.)
 2. **Scrape** — fetches each URL using curl_cffi where possible, falling back to a headless Chromium browser (Playwright) for sites that require JavaScript or a logged-in session. Structured data is preferred: JSON-LD `JobPosting` schema is extracted first, then Next.js `__NEXT_DATA__`, then plain text stripping as a fallback.
 3. **Extract** — an LLM structures the raw page text into a job listing (employer, title, language, listing text formatted as markdown)
-4. **Assess** — a second LLM call scores the listing on domain fit, role fit, and gap risk against your profile and criteria, and produces a structured assessment with fit areas, gaps, and an overall recommendation
-5. **Store** — results are saved to `data/fumble.db` (SQLite)
-6. **Review** — browse, filter, rate, and bookmark results in the dashboard
+4. **Filter** — a two-stage spam check: first a keyword match on the job title (from your `search-criteria.md`), then a semantic LLM check using the triage model. Flagged listings are stored as spam and skipped for full assessment
+5. **Assess** — a second LLM call scores the listing on domain fit, role fit, and gap risk against your profile and criteria, and produces a structured assessment with fit areas, gaps, and an overall recommendation
+6. **Store** — results are saved to `data/fumble.db` (SQLite)
+7. **Review** — browse, filter, rate, and bookmark results in the dashboard
 
 URLs are cached after processing. Re-running over the same date range skips already-seen URLs without re-scraping.
 
@@ -46,6 +47,8 @@ After tool install, two commands are available globally:
 #### Add your background and search profile
 
 Copy `resources/profile.example.md` → `resources/profile.md` and `resources/search-criteria.example.md` → `resources/search-criteria.md`, then fill them in with your background and job search criteria. These files are gitignored so your personal details stay local.
+
+You can optionally add a `## Spam keywords` section to `search-criteria.md` — a list of keywords matched against job titles as the first (cheapest) spam filter stage, before the LLM check.
 
 #### IMAP setup
 
@@ -111,7 +114,7 @@ fumble
 ```
 
 The dashboard lets you:
-- Switch between **Inbox** (unrated), **Saved** (liked/superliked), **Hidden** (disliked), and **All** views
+- Switch between **Inbox** (unrated), **Saved** (liked/superliked), **Hidden** (disliked), **Spam** (auto-filtered), and **All** views
 - Refine by recommendation, domain fit, role fit, gap risk, employer, and job title via the filter popover
 - View the full job listing alongside the structured AI assessment — fit areas, gaps with severity, and per-dimension explanations
 - Rate entries with superlike / like / dislike; rated entries auto-advance to the next listing
