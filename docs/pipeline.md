@@ -7,6 +7,7 @@ Stages marked **[no LLM]** cost nothing. Stages that call an LLM name the role u
 ┌─────────────────────────────────────────────────────────────┐
 │  EMAIL FETCH   email_fetch.py                               │
 │  Input:  IMAP mailbox, date range / unread flag             │
+│          or --url / --url-file for manual input             │
 │  Output: list of (tracking_url, source, scraper)            │
 │  Models: none                                               │
 └────────────────────────────┬────────────────────────────────┘
@@ -19,8 +20,12 @@ Stages marked **[no LLM]** cost nothing. Stages that call an LLM name the role u
 │                              │ yes → skip (no DB entry)     │
 │                              │ no  ↓                        │
 │  2. Scrape  scrape.py                                       │
-│     curl_cffi first, Playwright fallback                    │
-│     → raw page text + canonical URL                         │
+│     Extractor priority chain (curl path):                   │
+│       a. JSON-LD JobPosting schema (_extract_jsonld_job)    │
+│       b. Next.js __NEXT_DATA__ JSON (_extract_next_data)    │
+│       c. Plain HTML tag stripping (_strip_html)             │
+│     Browser path (LinkedIn etc.): Playwright inner_text     │
+│     → raw page text + canonical URL + scrape_method         │
 │        scrape error → log failures.log, skip                │
 │                                                             │
 │  3. Login wall check (URL pattern match)                    │
@@ -53,13 +58,16 @@ Stages marked **[no LLM]** cost nothing. Stages that call an LLM name the role u
 ┌─────────────────────────────────────────────────────────────┐
 │  EXTRACT   extract.py::extract_listing                      │
 │  Model:    EXTRACT_MODEL  (default: ollama/qwen3.5:9b)      │
+│            recommended: gemini/gemini-2.5-flash-lite        │
 │                                                             │
 │  Structured extraction from raw text:                       │
 │    is_job_listing  bool                                     │
 │    employer        string                                   │
 │    job_title       string                                   │
 │    language        DE | EN                                  │
-│    listing_text    full listing cleaned to markdown         │
+│    listing_text    full listing reproduced as markdown      │
+│                   (content integrity enforced in prompt;    │
+│                    formatting improved where needed)        │
 │                                                             │
 │  is_job_listing=false → log failures.log, skip (no DB entry)│
 └────────────────────────────┬────────────────────────────────┘
@@ -92,6 +100,7 @@ Stages marked **[no LLM]** cost nothing. Stages that call an LLM name the role u
 ┌─────────────────────────────────────────────────────────────┐
 │  ASSESS   assess.py::assess_fit                             │
 │  Model:   ASSESS_MODEL  (default: ollama/qwen3.5:9b)        │
+│           recommended: anthropic/claude-haiku-4-5-20251001  │
 │                                                             │
 │  Full fit assessment against profile + criteria:            │
 │    job_summary       one-sentence role description          │
@@ -129,13 +138,15 @@ Stages marked **[no LLM]** cost nothing. Stages that call an LLM name the role u
 
 ## Models and roles
 
-| Role | Default provider | Default model | Env vars |
+| Role | Default | Recommended | Env vars |
 |---|---|---|---|
-| Triage | `ollama` | `llama3.2` | `LLM_TRIAGE_PROVIDER`, `LLM_TRIAGE_MODEL` |
-| Extract | `ollama` | `qwen3.5:9b` | `LLM_EXTRACT_PROVIDER`, `LLM_EXTRACT_MODEL` |
-| Assess | `ollama` | `qwen3.5:9b` | `LLM_ASSESS_PROVIDER`, `LLM_ASSESS_MODEL` |
+| Triage | `ollama/llama3.2` | `ollama/llama3.2` (or skip — not used for non-Ollama providers) | `LLM_TRIAGE_PROVIDER`, `LLM_TRIAGE_MODEL` |
+| Extract | `ollama/qwen3.5:9b` | `gemini/gemini-2.5-flash-lite` — free tier, fast | `LLM_EXTRACT_PROVIDER`, `LLM_EXTRACT_MODEL` |
+| Assess | `ollama/qwen3.5:9b` | `anthropic/claude-haiku-4-5-20251001` — cheap, fast, high quality | `LLM_ASSESS_PROVIDER`, `LLM_ASSESS_MODEL` |
 
 Triage is skipped entirely for non-Ollama providers (API models are fast enough that the pre-filter adds no value).
+
+Anthropic assessment uses prompt caching: profile and criteria are cached across a batch run, reducing input token cost by ~80% after the first call.
 
 ## Failures log
 
