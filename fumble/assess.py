@@ -103,6 +103,7 @@ class Assessment(JobListing, FitResult):
     is_job_listing: bool = True  # always true by the time we reach assessment
     url: str
     source: str
+    scrape_method: str = ""
     scraped_at: datetime
     assessed_at: datetime
     assessed_model: str = ""
@@ -116,6 +117,7 @@ def assess_fit(
     criteria_text: str,
     url: str = "",
     source: str = "",
+    scrape_method: str = "",
     scraped_at: datetime | None = None,
 ) -> Assessment:
     cached_prefix = CONTEXT_PROMPT.format(profile_text=profile_text, criteria_text=criteria_text)
@@ -130,6 +132,7 @@ def assess_fit(
         **fit.model_dump(),
         url=url,
         source=source,
+        scrape_method=scrape_method,
         scraped_at=scraped_at or now,
         assessed_at=now,
         assessed_model=f"{ASSESS_PROVIDER}/{ASSESS_MODEL}",

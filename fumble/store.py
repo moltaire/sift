@@ -5,7 +5,7 @@ from pathlib import Path
 
 from fumble.assess import Assessment
 
-DB_PATH = Path("data/fumble.db")
+DB_PATH = Path(__file__).parent.parent / "data/fumble.db"
 
 
 def _connect() -> sqlite3.Connection:
@@ -64,6 +64,7 @@ def init_db() -> None:
             "assessed_model TEXT DEFAULT ''",
             "role_check INTEGER DEFAULT 1",
             "pipeline_stage TEXT DEFAULT 'assessed'",
+            "scrape_method TEXT DEFAULT ''",
         ]:
             try:
                 conn.execute(f"ALTER TABLE assessments ADD COLUMN {col}")
@@ -117,15 +118,16 @@ def save_assessment(a: Assessment) -> None:
         conn.execute(
             """
             INSERT OR IGNORE INTO assessments
-                (url, source, scraped_at, assessed_at, assessed_model, employer, job_title,
-                 language, listing_text, job_summary, role_check, domain_fit, domain_fit_reason,
-                 role_fit, role_fit_reason, gap_risk, gap_risk_reason, fit_areas, gaps,
-                 reasoning, suggestion, rating, pipeline_stage)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (url, source, scrape_method, scraped_at, assessed_at, assessed_model, employer,
+                 job_title, language, listing_text, job_summary, role_check, domain_fit,
+                 domain_fit_reason, role_fit, role_fit_reason, gap_risk, gap_risk_reason,
+                 fit_areas, gaps, reasoning, suggestion, rating, pipeline_stage)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
             (
                 a.url,
                 a.source,
+                a.scrape_method,
                 a.scraped_at.isoformat(),
                 a.assessed_at.isoformat(),
                 a.assessed_model,
@@ -157,6 +159,7 @@ def update_assessment(a: Assessment) -> None:
     params = (
         a.url,
         a.source,
+        a.scrape_method,
         a.scraped_at.isoformat(),
         a.assessed_at.isoformat(),
         a.assessed_model,
@@ -182,13 +185,14 @@ def update_assessment(a: Assessment) -> None:
         cur = conn.execute(
             """
             INSERT INTO assessments
-                (url, source, scraped_at, assessed_at, assessed_model, employer, job_title,
-                 language, listing_text, job_summary, role_check, domain_fit, domain_fit_reason,
-                 role_fit, role_fit_reason, gap_risk, gap_risk_reason, fit_areas, gaps,
-                 reasoning, suggestion, pipeline_stage)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (url, source, scrape_method, scraped_at, assessed_at, assessed_model, employer,
+                 job_title, language, listing_text, job_summary, role_check, domain_fit,
+                 domain_fit_reason, role_fit, role_fit_reason, gap_risk, gap_risk_reason,
+                 fit_areas, gaps, reasoning, suggestion, pipeline_stage)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(url) DO UPDATE SET
                 source          = excluded.source,
+                scrape_method   = excluded.scrape_method,
                 scraped_at      = excluded.scraped_at,
                 assessed_at     = excluded.assessed_at,
                 assessed_model  = excluded.assessed_model,

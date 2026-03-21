@@ -8,14 +8,15 @@ from urllib.parse import urlparse, urlunparse
 from fumble.assess import Assessment, assess_fit
 from fumble.email_fetch import fetch_job_urls
 from fumble.extract import JobListing, extract_listing, is_listing_quick, spam_filter
-from fumble.llm import TRIAGE_MODEL
+from fumble.llm import ASSESS_MODEL, ASSESS_PROVIDER, EXTRACT_MODEL, EXTRACT_PROVIDER, TRIAGE_MODEL
 from fumble.scrape import login_flow, scrape_job_page
 from fumble.store import clear_ratings, init_db, load_assessments, mark_url_seen, save_assessment, update_assessment, update_rating, tracking_url_seen, url_exists
 
-PROFILE = Path("resources/profile.md").read_text()
-CRITERIA = Path("resources/search-criteria.md").read_text()
+_REPO_ROOT = Path(__file__).parent.parent
+PROFILE = (_REPO_ROOT / "resources/profile.md").read_text()
+CRITERIA = (_REPO_ROOT / "resources/search-criteria.md").read_text()
 
-LOG_PATH = Path("data/failures.log")
+LOG_PATH = _REPO_ROOT / "data/failures.log"
 MIN_LISTING_LENGTH = 150  # chars — below this, extraction likely caught a wall or empty page
 
 
@@ -41,6 +42,7 @@ def main():
     parser.add_argument("--days", type=int, default=3, help="Fetch emails from the last N days (default: 3)")
     parser.add_argument("--unread", action="store_true", help="Only process unread emails")
     parser.add_argument("--url", action="append", dest="urls", metavar="URL", help="Process a specific URL directly (can be repeated)")
+    parser.add_argument("--url-file", metavar="FILE", help="Process all URLs from a file (one per line, # comments ignored)")
     parser.add_argument("--login", metavar="URL", help="Open a headed browser at URL to log in and save the session")
     parser.add_argument("--force", action="store_true", help="Process all URLs, ignoring the seen-URL cache")
     parser.add_argument("--mark-read", action="store_true", help="Mark fetched emails as read after processing")
@@ -103,6 +105,12 @@ def main():
         print(f"\nDone. {ok} re-assessed, {failed} failed.")
         return
 
+    if args.url_file:
+        url_file = Path(args.url_file)
+        file_urls = [l.strip() for l in url_file.read_text().splitlines() if l.strip().startswith("http")]
+        args.urls = (args.urls or []) + file_urls
+        print(f"Loaded {len(file_urls)} URL(s) from {url_file}")
+
     if args.urls:
         job_urls = [(url, "manual", "auto") for url in args.urls]
         print(f"Processing {len(job_urls)} manually provided URL(s)\n")
@@ -130,7 +138,7 @@ def main():
         print(f"[{i}/{total}] [{source}] Scraping {tracking_url[:60]}...")
 
         try:
-            job_text, canonical_url = scrape_job_page(tracking_url, scraper=scraper)
+            job_text, canonical_url, scrape_method = scrape_job_page(tracking_url, scraper=scraper)
             scraped_at = datetime.now(timezone.utc)
         except Exception as e:
             print(f"  Scrape failed: {e}")
@@ -173,7 +181,7 @@ def main():
             skip_count += 1
             continue
 
-        print(f"  Extracting...")
+        print(f"  Extracting... [{EXTRACT_PROVIDER}/{EXTRACT_MODEL}]")
         try:
             listing = extract_listing(job_text)
         except Exception as e:
@@ -217,6 +225,7 @@ def main():
                 reasoning=spam_reason,
                 url=canonical_url,
                 source=source,
+                scrape_method=scrape_method,
                 scraped_at=scraped_at,
                 assessed_at=now,
                 assessed_model=spam_model,
@@ -229,7 +238,7 @@ def main():
             skip_count += 1
             continue
 
-        print(f"  Assessing...")
+        print(f"  Assessing... [{ASSESS_PROVIDER}/{ASSESS_MODEL}]")
         try:
             result = assess_fit(
                 listing=listing,
@@ -237,6 +246,7 @@ def main():
                 criteria_text=CRITERIA,
                 url=canonical_url,
                 source=source,
+                scrape_method=scrape_method,
                 scraped_at=scraped_at,
             )
         except Exception as e:

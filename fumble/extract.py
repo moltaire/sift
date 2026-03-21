@@ -22,14 +22,12 @@ Set is_job_listing accordingly, then extract:
 - employer: company name (empty string if unclear)
 - job_title: exact job title as written (empty string if unclear)
 - language: DE or EN based on the job listing language
-- listing_text: the complete job listing in markdown. Reproduce every section that belongs to the job advertisement — do not summarise, shorten, or omit any part. Use ## for main sections and ### for subsections. Include all of the following if present:
-  - Company introduction / about the organisation
-  - Role overview / what you will do
-  - Responsibilities and tasks
-  - Requirements and qualifications
-  - What the employer offers / benefits
-  - Application process and contact details
-  Exclude only navigation menus, cookie notices, footer content, links to other jobs, and unrelated site boilerplate. Empty string if is_job_listing is false.
+- listing_text: the complete job listing in markdown. Rules:
+  - CONTENT INTEGRITY: reproduce every word of the listing exactly as written — do not paraphrase, summarise, reorder, or omit anything. Every section must appear in its original order.
+  - FORMATTING: improve markdown structure where the source is poorly formatted — use ## for main sections, ### for subsections, and bullet points (- ) for lists. Each section header must be on its own line, never inline with surrounding text.
+  - PRESERVE: keep all text emphasis (bold, italic, underline) and hyperlinks where present in the source.
+  - EXCLUDE only navigation menus, cookie notices, footer content, links to other jobs, and unrelated site boilerplate.
+  - Empty string if is_job_listing is false.
 """
 
 
