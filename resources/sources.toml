@@ -29,3 +29,9 @@ folder = "Job Search/Academics"
 name = "academics"
 display = "Academics"
 url_pattern = "academics.de/lnk"
+
+[[sources]]
+folder = "Job Search/Google"
+name = "google"
+display = "Google"
+url_pattern = "google.com/about/careers/applications/jobs/results/"
