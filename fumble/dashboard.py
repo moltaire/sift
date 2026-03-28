@@ -86,10 +86,12 @@ if not assessments and not spam_assessments:
     st.info("No listings yet. Run fumblebee first.")
     st.stop()
 
-with open(Path(__file__).parent.parent / "resources/sources.toml", "rb") as _f:
+try:
     import tomllib as _tomllib
-
-    _sources = _tomllib.load(_f)["sources"]
+    with open(Path(__file__).parent.parent / "resources/sources.toml", "rb") as _f:
+        _sources = _tomllib.load(_f).get("sources", [])
+except (FileNotFoundError, Exception):
+    _sources = []
 SOURCE_DISPLAY = {s["name"]: s.get("display", s["name"].title()) for s in _sources}
 SOURCE_DISPLAY.setdefault("manual-test", "Manual")
 SUGGESTION_ICON = {"apply": "🟢", "consider": "🟡", "skip": "🔴", "spam": "🚫"}

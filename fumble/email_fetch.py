@@ -16,18 +16,49 @@ SOURCES_PATH = Path(__file__).parent.parent / "resources/sources.toml"
 
 
 def _load_sources() -> list[dict]:
-    with open(SOURCES_PATH, "rb") as f:
-        return tomllib.load(f)["sources"]
+    if not SOURCES_PATH.exists():
+        raise FileNotFoundError(
+            f"sources.toml not found ({SOURCES_PATH}). "
+            "Open the dashboard and add your email sources in Settings (⚙️)."
+        )
+    try:
+        with open(SOURCES_PATH, "rb") as f:
+            return tomllib.load(f)["sources"]
+    except tomllib.TOMLDecodeError as e:
+        raise ValueError(f"sources.toml is malformed: {e}") from e
+    except KeyError:
+        raise ValueError("sources.toml contains no [[sources]] entries.") from None
 
 
 def _connect() -> imapclient.IMAPClient:
+    missing = [v for v in ("IMAP_HOST", "IMAP_EMAIL", "IMAP_PASSWORD") if not os.environ.get(v)]
+    if missing:
+        raise RuntimeError(
+            f"Missing IMAP credentials in .env: {', '.join(missing)}. "
+            "Copy .env.example to .env and fill in your IMAP settings."
+        )
+
     host = os.environ["IMAP_HOST"]
     port = int(os.environ.get("IMAP_PORT", 993))
     email = os.environ["IMAP_EMAIL"]
     password = os.environ["IMAP_PASSWORD"]
 
-    server = imapclient.IMAPClient(host, port=port, ssl=True)
-    server.login(email, password)
+    try:
+        server = imapclient.IMAPClient(host, port=port, ssl=True)
+    except Exception as e:
+        raise RuntimeError(
+            f"Could not connect to IMAP server {host}:{port} — {e}\n"
+            "Check IMAP_HOST and IMAP_PORT in .env."
+        ) from e
+
+    try:
+        server.login(email, password)
+    except Exception as e:
+        raise RuntimeError(
+            f"IMAP login failed for {email} — {e}\n"
+            "Check IMAP_EMAIL and IMAP_PASSWORD in .env."
+        ) from e
+
     return server
 
 
@@ -85,7 +116,11 @@ def fetch_job_urls(since: date | None = None, unread_only: bool = False, mark_re
             pattern = source["url_pattern"]
             scraper = source.get("scraper", "auto")
 
-            server.select_folder(folder)
+            try:
+                server.select_folder(folder)
+            except Exception as e:
+                print(f"[{name}] ⚠️  Folder not found: {folder!r} — skipping. ({e})")
+                continue
 
             if unread_only:
                 uids = server.search(["UNSEEN"])

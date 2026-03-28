@@ -13,8 +13,19 @@ from fumble.scrape import login_flow, scrape_job_page
 from fumble.store import clear_ratings, init_db, load_assessments, mark_url_seen, save_assessment, update_assessment, update_rating, tracking_url_seen, url_exists
 
 _REPO_ROOT = Path(__file__).parent.parent
-PROFILE = (_REPO_ROOT / "resources/profile.md").read_text()
-CRITERIA = (_REPO_ROOT / "resources/search-criteria.md").read_text()
+
+
+def _load_required_file(path: Path) -> str:
+    if not path.exists():
+        raise SystemExit(
+            f"Missing {path.relative_to(_REPO_ROOT)}\n"
+            "Open the dashboard and fill it in under Settings (⚙️ top right)."
+        )
+    return path.read_text()
+
+
+PROFILE = _load_required_file(_REPO_ROOT / "resources/profile.md")
+CRITERIA = _load_required_file(_REPO_ROOT / "resources/search-criteria.md")
 
 LOG_PATH = _REPO_ROOT / "data/failures.log"
 MIN_LISTING_LENGTH = 150  # chars — below this, extraction likely caught a wall or empty page
@@ -116,12 +127,18 @@ def main():
         print(f"Processing {len(job_urls)} manually provided URL(s)\n")
     elif args.unread:
         print("Fetching job URLs from unread emails...")
-        job_urls = fetch_job_urls(unread_only=True, mark_read=args.mark_read)
+        try:
+            job_urls = fetch_job_urls(unread_only=True, mark_read=args.mark_read)
+        except (RuntimeError, FileNotFoundError, ValueError) as e:
+            raise SystemExit(f"Error: {e}") from e
         print(f"Found {len(job_urls)} URL(s) across all sources\n")
     else:
         since = date.today() - timedelta(days=args.days)
         print(f"Fetching job URLs from emails since {since}...")
-        job_urls = fetch_job_urls(since=since, mark_read=args.mark_read)
+        try:
+            job_urls = fetch_job_urls(since=since, mark_read=args.mark_read)
+        except (RuntimeError, FileNotFoundError, ValueError) as e:
+            raise SystemExit(f"Error: {e}") from e
         print(f"Found {len(job_urls)} URL(s) across all sources\n")
 
     seen_canonical: set[str] = set()
